@@ -2,7 +2,7 @@
 Pydantic schemas for API request/response validation
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Literal
 from datetime import datetime
 
@@ -33,6 +33,8 @@ class CausalAnalysis(BaseModel):
 
 class LLMResponse(BaseModel):
     """Response schema for chat endpoint"""
+    model_config = ConfigDict(protected_namespaces=())
+    
     response: str = Field(..., description="The LLM's response")
     model_used: str = Field(..., description="Which model generated the response")
     cost: float = Field(..., ge=0.0, description="Cost of this request in USD")
@@ -46,6 +48,8 @@ class LLMResponse(BaseModel):
 
 class DashboardStats(BaseModel):
     """Schema for dashboard statistics"""
+    model_config = ConfigDict(protected_namespaces=())
+    
     total_requests: int = Field(..., ge=0, description="Total number of requests")
     cache_hit_rate: float = Field(..., ge=0.0, le=100.0, description="Cache hit rate percentage")
     cost_savings: float = Field(..., ge=0.0, description="Dollars saved vs GPT-4o-only routing")
