@@ -1,0 +1,16 @@
+python-dotenv
+openai
+anthropic
+google-generativeai
+dowhy
+econml
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+sentence-transformers
+tqdm
+statsmodels
+jupyter
+ipykernel
