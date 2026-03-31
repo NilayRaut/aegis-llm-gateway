@@ -139,24 +139,19 @@ class RouterAgent:
         """
         logger.info(f"Calling LLM: {state['model']}")
         
-        try:
-            # Build messages
-            messages = []
-            
-            # Add context if provided
-            if state.get("context"):
-                messages.append({
-                    "role": "system",
-                    "content": f"Use the following context to answer: {state['context']}"
-                })
-            
-            # Add user prompt
+        # Build messages once — reused for primary call and any fallback
+        messages = []
+        if state.get("context"):
             messages.append({
-                "role": "user",
-                "content": state["prompt"]
+                "role": "system",
+                "content": f"Use the following context to answer: {state['context']}"
             })
-            
-            # Call LLM
+        messages.append({
+            "role": "user",
+            "content": state["prompt"]
+        })
+
+        try:
             response = await llm_client.call_llm(
                 provider=state["provider"],
                 model=state["model"],
@@ -164,19 +159,43 @@ class RouterAgent:
                 temperature=0.7,
                 max_tokens=500,
             )
-            
-            # Update state with response
             state["response"] = response.content
             state["input_tokens"] = response.input_tokens
             state["output_tokens"] = response.output_tokens
             state["cost_usd"] = response.cost_usd
             state["latency_ms"] = response.latency_ms
-            
             logger.info(f"LLM call complete: {response.latency_ms}ms, ${response.cost_usd:.6f}")
-            
-        except Exception as e:
-            logger.error(f"LLM call error: {e}")
-            state["error"] = f"LLM call failed: {str(e)}"
+
+        except Exception as primary_err:
+            logger.error(f"LLM call error: {primary_err}")
+
+            # Fallback: if the primary provider isn't openai, try gpt-4o-mini
+            if state["provider"] != "openai":
+                logger.warning(
+                    "Primary provider '%s' failed — falling back to gpt-4o-mini",
+                    state["provider"],
+                )
+                try:
+                    response = await llm_client.call_openai(
+                        model="gpt-4o-mini",
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=500,
+                    )
+                    state["model"] = "gpt-4o-mini"
+                    state["provider"] = "openai"
+                    state["reasoning"] += " (fallback: primary provider unavailable)"
+                    state["response"] = response.content
+                    state["input_tokens"] = response.input_tokens
+                    state["output_tokens"] = response.output_tokens
+                    state["cost_usd"] = response.cost_usd
+                    state["latency_ms"] = response.latency_ms
+                    logger.info("Fallback to gpt-4o-mini succeeded")
+                    return state
+                except Exception as fallback_err:
+                    logger.error("Fallback also failed: %s", fallback_err)
+
+            state["error"] = f"LLM call failed: {str(primary_err)}"
             state["response"] = "I apologize, but I encountered an error processing your request. Please try again."
             state["cost_usd"] = 0.0
             state["latency_ms"] = 0
