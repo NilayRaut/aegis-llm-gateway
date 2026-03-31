@@ -55,7 +55,7 @@ class LLMClient:
         "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
         
         # Ollama (local, free)
-        "llama-3": {"input": 0.0, "output": 0.0},
+        "llama3.1": {"input": 0.0, "output": 0.0},
     }
     
     def __init__(self):

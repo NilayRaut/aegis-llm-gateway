@@ -29,7 +29,7 @@ def _build_seed_records() -> list[dict]:
     Build 50 demo request records with a realistic model distribution.
 
     Distribution:
-      8  × llama-3           (free, general)
+      8  × llama3.1           (free, general)
       10 × gemini-1.5-flash  ($0.000008, general/technical)
       12 × gpt-4o-mini       ($0.000015, general)
        5 × claude-haiku      ($0.000025, general)
@@ -48,12 +48,12 @@ def _build_seed_records() -> list[dict]:
 
     idx = 0
 
-    # Group 1: llama-3 (8 records, free, general)
+    # Group 1: llama3.1 (8 records, free, general)
     for _ in range(8):
         records.append({
             "id": str(uuid.uuid4()),
             "timestamp": ts(idx),
-            "model_used": "llama-3",
+            "model_used": "llama3.1",
             "provider": "ollama",
             "cost_usd": 0.0,
             "latency_ms": random.randint(50, 200),
