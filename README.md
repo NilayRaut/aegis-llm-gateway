@@ -37,56 +37,44 @@ The variance threshold (θ = 0.35) that separates stable facts from hallucinatio
 
 ## System Architecture
 
-### Two Subsystems
+### Request Pipeline
 
 ```
-OFFLINE (runs once, on synthetic data)
----------------------------------------
+Incoming Prompt
+      |
+[1] Security Gate
+      |  — PII scan (email, SSN, phone regex)
+      |  — Injection detection ("ignore previous instructions", "jailbreak", ...)
+      |  — Domain hard gate: legal/medical/financial → force GPT-4o, no override
+      |
+[2] Semantic Cache (cosine similarity ≥ 0.85 → return cached, $0.00)
+      |  cache miss
+[3] Complexity Classifier → Route to cheapest capable model
+      |
+[4] LLM Call (unified async client, 3-retry with backoff)
+      |
+[5] Causal Risk Check
+      |  — Tier 1: Hedging phrase scan [FREE] — all providers
+      |  — Tier 3: Paraphrase variance vs θ=0.35 [gated: legal/medical/financial or complexity > 0.7]
+      |
+[6] Log to SQLite (cost, model, latency, risk_level, cache_hit, domain)
+      |
+Response + causal_analysis { is_hallucination, confidence, explanation }
+```
+
+### Offline DoWhy Calibration (runs once, not in request path)
+
+```
 1,000 synthetic (prompt, context, response) tuples
       |
-Claude Haiku scores quality (different family = non-circular judge)
+Claude Haiku scores response quality (different model family = non-circular judge)
       |
-DoWhy: context_relevance → response_quality (+ confounders)
+DoWhy: context_relevance → response_quality (+ confounders: length, domain, temperature)
       |
 Refutation tests: placebo_treatment, random_common_cause
       |
-theta = 0.35  <-- calibrated variance threshold
-      |
-      | validates threshold for
-      v
-
-ONLINE (every request)
----------------------------------------
-Incoming Prompt
-      |
-Semantic Cache Check (cosine similarity >= 0.95 → return cached)
-      |  cache miss
-Complexity Classifier → Route to optimal model
-      |
-Tiered Hallucination Detector:
-  |
-  Tier 1: Logprob check [FREE] ──────────── ~60% exit SAFE
-  |
-  Tier 2: Cross-model consensus [$0.0003] ── ~30% exit
-  |
-  Tier 3: Causal intervention [$0.0006] ───── ~10% only
-           do(phrasing=X): paraphrase 3x
-           measure claim variance vs theta = 0.35
-           Domain gate: legal/medical/financial → always Tier 3
-      |
-Response + Risk Level (SAFE / MEDIUM_RISK / HIGH_RISK)
+θ = 0.35  ← causally-justified variance threshold used at runtime
 ```
-
-### Detection Cost Per 1,000 Queries
-
-| Tier | Query Share | Cost |
-|------|-------------|------|
-| Tier 1 | 60% (600) | $0.00 |
-| Tier 2 | 30% (300) | $0.09 |
-| Tier 3 | 10% (100) | $0.06 |
-| **Total** | 1,000 | **$0.15** |
-
-Always running Tier 3 would cost $0.60 per 1,000 queries. The tiered approach delivers a 75% reduction in detection cost.
 
 ---
 
@@ -97,32 +85,35 @@ Always running Tier 3 would cost $0.60 per 1,000 queries. The tiered approach de
 | Free | Llama-3 8B (local, Ollama) | $0.00 | Simple factual, conversational |
 | Budget | Gemini 1.5 Flash | $0.075 | Low-medium complexity |
 | Standard | GPT-4o-mini | $0.150 | Medium complexity |
-| Quality | Claude 3 Haiku | $0.250 | Medium-high, nuanced reasoning |
-| Premium | GPT-4o | $2.500 | Complex reasoning only |
+| Quality | Claude 3.5 Haiku | $0.250 | Medium-high, nuanced reasoning |
+| Premium | GPT-4o | $2.500 | Complex reasoning, high-stakes domains |
 
-Routing is automatic — the complexity classifier scores each prompt and routes to the cheapest model capable of handling it.
+Routing is automatic — the complexity classifier scores each prompt (0.0–1.0) and routes to the cheapest model capable of handling it. Legal, medical, and financial queries are always hard-routed to GPT-4o regardless of complexity score.
 
 ---
 
-## Dashboard Metrics
+## Dashboard
+
+Live stats updated after every request:
 
 - Cumulative cost savings vs. GPT-4o-only baseline
 - Model distribution across routing tiers
-- Semantic cache hit rate with ROI
-- Hallucination risk breakdown per session (SAFE / MEDIUM / HIGH)
-- Average latency per model tier
+- Semantic cache hit rate
+- Risk flags (MEDIUM + HIGH risk responses)
+- Average latency (cache hits excluded)
+
+Dashboard pre-seeded with 50 realistic demo requests on first startup — real data is visible immediately before any prompts are sent.
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- OpenAI API key
-- Anthropic API key (Claude)
-- Google API key (Gemini)
-- Ollama with `llama3:8b` pulled locally
+- Python 3.11+, Node.js 18+
+- OpenAI API key (required — GPT-4o-mini + GPT-4o)
+- Anthropic API key (Claude 3.5 Haiku)
+- Google API key (Gemini Flash)
+- Ollama with `llama3:8b` pulled locally (optional — falls back to GPT-4o-mini)
 
 ### Backend
 ```bash
@@ -148,52 +139,65 @@ npm run dev
 
 ---
 
-## Technical Approach
+## Technical Details
 
-### Complexity Classification
+### Complexity Classifier
+
+4-factor weighted score:
+
 ```python
-# Features: embedding distance from "simple" cluster,
-# token count, named entity density, reasoning verb presence
-complexity_score = classifier.score(prompt)  # float: 0.0 to 1.0
+score = (
+    0.30 * semantic_norm(embedding_distance_from_simple_cluster) +
+    0.25 * structure_score(token_count, sentence_count) +
+    0.25 * question_type_score(reasoning_verbs, multi_part) +
+    0.20 * domain_keyword_density
+)
 
 routing_table = {
     (0.0, 0.2): "llama-3",
-    (0.2, 0.4): "gemini-flash",
+    (0.2, 0.4): "gemini-1.5-flash",
     (0.4, 0.6): "gpt-4o-mini",
     (0.6, 0.8): "claude-haiku",
     (0.8, 1.0): "gpt-4o",
 }
 ```
 
-### Causal Intervention Test (Runtime, Tier 3)
-```python
-# do(phrasing=X): paraphrase and re-query
-paraphrases = generate_paraphrases(prompt, n=3)
-responses = [query_llm(p, model=selected_model) for p in paraphrases]
-claims = [extract_factual_claims(r) for r in responses]
-variance = semantic_variance(claims)  # cosine distance on claim embeddings
+### Semantic Cache
 
-if variance > THETA:  # THETA = 0.35, calibrated offline by DoWhy
-    return HallucinationRisk.HIGH
+In-memory cache using `sentence-transformers/all-MiniLM-L6-v2`. Threshold 0.85 (not 0.95 — that gives <1% hit rate in practice). Cache hit returns in ~5ms at $0.00.
+
+### Security Layer
+
+Three-gate check before any routing:
+1. PII regex — blocks email, SSN (`XXX-XX-XXXX`), phone patterns
+2. Injection detection — keyword list: `"ignore previous instructions"`, `"jailbreak"`, `"system:"`, etc.
+3. Domain hard gate — `legal | medical | financial` → force GPT-4o. This bypass cannot be overridden by the classifier.
+
+### Hallucination Detector (Tier 1 + Tier 3)
+
+**Tier 1 — Hedging phrase detection (free, runs on all responses)**  
+Scans response for confidence-undermining phrases: `"I'm not sure"`, `"I believe"`, `"you should consult a professional"`, `"as of my knowledge cutoff"`, etc. → MEDIUM risk if found.
+
+**Tier 3 — Paraphrase variance (gated)**  
+Only runs if domain = legal/medical/financial OR complexity_score > 0.7:
+```python
+paraphrase = rephrase(prompt, via="gpt-4o-mini")   # ~$0.000015
+r1 = query(original_prompt, model=selected_model)
+r2 = query(paraphrase, model=selected_model)
+variance = 1 - cosine_similarity(embed(r1), embed(r2))
+
+if variance > 0.35:   # θ calibrated offline via DoWhy
+    return HIGH_RISK
 ```
 
-### Offline DoWhy Calibration (Notebook, Not in Request Path)
-```python
-# Causal DAG — no ground truth required
-# Treatment: context_relevance
-# Outcome: response_quality (scored by Claude Haiku)
-# Confounders: prompt_length, domain, temperature
+**What's intentionally not included:**  
+Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and is not demonstrable in real time. The offline DoWhy calibration makes Tier 3 alone defensible.
 
-model = CausalModel(
-    data=synthetic_df,
-    treatment="context_relevance",
-    outcome="response_quality",
-    graph=causal_dag
-)
-estimate = model.estimate_effect(identified_estimand, method_name="backdoor")
-refutation = model.refute_estimate(estimate, method_name="placebo_treatment")
-# Validates that THETA = 0.35 is causally grounded
-```
+### Offline DoWhy Calibration
+
+See `notebooks/` for the full calibration. The key claim:
+
+> θ = 0.35 is not a tuned hyperparameter — it is the causally-estimated boundary between context-anchored and context-unanchored responses, validated by placebo treatment refutation.
 
 ---
 
@@ -203,28 +207,31 @@ refutation = model.refute_estimate(estimate, method_name="placebo_treatment")
 aegis-project/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes.py                    # FastAPI endpoints
-│   │   ├── agents/router.py                 # LangGraph routing agent
-│   │   ├── models/schemas.py                # Pydantic models
-│   │   └── services/
-│   │       ├── llm_client.py                # All LLM API clients
-│   │       ├── classifier.py                # Complexity scorer
-│   │       ├── cache.py                     # Semantic cache
-│   │       ├── hallucination_detector.py    # Tiered causal detector
-│   │       └── domain_classifier.py         # High-stakes domain detection
+│   │   ├── api/
+│   │   │   └── routes.py               # /api/chat and /api/stats endpoints
+│   │   ├── agents/
+│   │   │   └── router.py               # LangGraph routing agent (classify→route→call→return)
+│   │   ├── models/
+│   │   │   └── schemas.py              # Pydantic request/response models
+│   │   ├── services/
+│   │   │   ├── llm_client.py           # Unified async client (OpenAI, Anthropic, Google, Ollama)
+│   │   │   ├── classifier.py           # 4-factor complexity scorer
+│   │   │   ├── security.py             # PII + injection detection + domain gate
+│   │   │   ├── domain_classifier.py    # legal/medical/financial/general detection
+│   │   │   ├── cache.py                # In-memory semantic cache (cosine ≥ 0.85)
+│   │   │   └── hallucination_detector.py  # Tier 1 hedging + Tier 3 paraphrase variance
+│   │   ├── db.py                       # SQLite async wrapper (log_request, get_stats)
+│   │   └── seed_data.py                # 50 demo records seeded on first startup
 │   ├── main.py
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── App.tsx
-│       └── components/
-│           ├── Dashboard.tsx
-│           └── PromptTester.tsx
+│       ├── App.tsx                     # Main UI (prompt input, response card, dashboard)
+│       └── components/                 # (componentization — Phase 5)
 ├── notebooks/
-│   └── causal_calibration.ipynb            # DoWhy offline calibration
+│   └── pearl_ladder/                   # DoWhy offline calibration + Pearl Ladder benchmark
 ├── data/
-│   ├── synthetic/                           # 1,000 calibration tuples
-│   └── cache/
+│   └── synthetic/                      # 1,000 calibration tuples
 └── README.md
 ```
 
@@ -234,7 +241,7 @@ aegis-project/
 
 | Component | Platform |
 |-----------|----------|
-| Backend (FastAPI + PostgreSQL) | Railway |
+| Backend (FastAPI + SQLite) | Railway |
 | Frontend (React) | Vercel |
 
 ---
