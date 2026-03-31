@@ -1,3 +1,7 @@
+# load_dotenv MUST be first — before any local imports that initialize API clients
+from dotenv import load_dotenv
+load_dotenv()
+
 """
 Aegis - Agentic LLM Gateway & Production Firewall
 Main FastAPI application entry point
@@ -5,13 +9,12 @@ Main FastAPI application entry point
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import router
 import uvicorn
-from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env file
-load_dotenv()
+from app.api.routes import router
+from app.db import init_db
+from app.seed_data import seed_if_empty
 
 app = FastAPI(
     title="Aegis - Agentic LLM Gateway",
@@ -25,14 +28,21 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Alternative dev port
-        "https://aegis.vercel.app",  # Production frontend (update later)
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3000",   # Alternative dev port
+        "https://aegis.vercel.app",  # Production frontend (update before deploy)
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and seed demo data on first run."""
+    await init_db()
+    await seed_if_empty()
 
 
 @app.get("/")

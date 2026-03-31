@@ -1,92 +1,174 @@
 """
-API routes for Aegis backend
+API routes for Aegis backend.
+
+Full pipeline per request:
+  1. Security check  → block PII / injection / domain gate
+  2. Cache lookup    → return cached response if similarity ≥ 0.85
+  3. LLM routing     → classify complexity, route to cheapest capable model
+  4. Cache store     → save response for future cache hits
+  5. DB logging      → persist cost, latency, domain, risk_level for dashboard
 """
 
-from fastapi import APIRouter, HTTPException
-from app.models.schemas import PromptRequest, LLMResponse, DashboardStats, RoutingDecision
-from app.agents.router import router_agent
 import uuid
-import time
+import logging
 
+from fastapi import APIRouter, HTTPException
+
+from app.models.schemas import (
+    PromptRequest,
+    LLMResponse,
+    DashboardStats,
+    RoutingDecision,
+)
+from app.agents.router import router_agent
+from app.services.security import security_checker
+from app.services.cache import semantic_cache
+from app import db
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Default model keys always returned in model_distribution
+# (so the frontend never needs to handle missing keys)
+_DEFAULT_MODEL_DIST = {
+    "llama-3": 0,
+    "gemini-1.5-flash": 0,
+    "gpt-4o-mini": 0,
+    "claude-haiku-3-5-sonnet-20241022": 0,
+    "gpt-4o": 0,
+}
+
+
+def _risk_from_domain(domain: str) -> str:
+    """Map domain to risk level for DB logging."""
+    if domain in ("legal", "medical"):
+        return "HIGH"
+    if domain == "financial":
+        return "MEDIUM"
+    return "SAFE"
 
 
 @router.post("/chat", response_model=LLMResponse)
 async def chat(request: PromptRequest):
     """
-    Process a chat request with intelligent routing.
-    
-    - Classifies prompt complexity
-    - Routes to appropriate model (5-tier system)
-    - Returns response with routing and cost info
+    Process a chat request through the full Aegis pipeline:
+    Security → Cache → Route → Store → Log → Return
     """
     request_id = str(uuid.uuid4())
-    
+
     try:
-        # Process request through router agent
+        # ── Step 1: Security check ────────────────────────────────────────────
+        security_result = security_checker.check(request.prompt)
+
+        if security_result.blocked:
+            logger.warning("Request %s blocked: %s", request_id, security_result.reason)
+            raise HTTPException(status_code=400, detail=security_result.reason)
+
+        domain = security_result.domain
+        risk_level = _risk_from_domain(domain)
+
+        # ── Step 2: Semantic cache lookup ─────────────────────────────────────
+        cached = semantic_cache.lookup(request.prompt)
+        if cached is not None:
+            logger.info("Cache HIT for request %s", request_id)
+
+            await db.log_request(
+                id=request_id,
+                model_used=cached.get("model_used", "cache"),
+                provider=cached.get("provider", ""),
+                cost_usd=0.0,
+                latency_ms=5,
+                complexity_score=cached.get("complexity_score", 0.0),
+                domain=domain,
+                cache_hit=True,
+                risk_level=risk_level,
+                security_blocked=False,
+            )
+
+            routing = RoutingDecision(
+                model=cached["routing_decision"]["model"],
+                reason="Served from semantic cache (similarity ≥ 0.85)",
+                confidence=cached["routing_decision"]["confidence"],
+                cache_hit=True,
+            )
+            return LLMResponse(
+                response=cached["response"],
+                model_used=cached["model_used"],
+                cost=0.0,
+                latency_ms=5,
+                routing_decision=routing,
+                causal_analysis=None,
+                request_id=request_id,
+            )
+
+        # ── Step 3: Route through LangGraph agent ─────────────────────────────
         result = await router_agent.process(
             prompt=request.prompt,
-            context=request.context
+            context=request.context,
+            forced_model=security_result.forced_model,
         )
-        
-        # Check for errors
+
         if result.get("error"):
             raise HTTPException(status_code=500, detail=result["error"])
-        
-        # Build routing decision
+
+        # ── Step 4: Store in cache for future hits ────────────────────────────
+        semantic_cache.add(request.prompt, result)
+
+        # ── Step 5: Log to DB ─────────────────────────────────────────────────
+        await db.log_request(
+            id=request_id,
+            model_used=result["model_used"],
+            provider=result.get("provider", ""),
+            cost_usd=result["cost"],
+            latency_ms=result["latency_ms"],
+            complexity_score=result.get("complexity_score", 0.0),
+            domain=domain,
+            cache_hit=False,
+            risk_level=risk_level,
+            security_blocked=False,
+        )
+
+        # ── Build and return response ──────────────────────────────────────────
         routing_decision = RoutingDecision(
             model=result["routing_decision"]["model"],
             reason=result["routing_decision"]["reason"],
             confidence=result["routing_decision"]["confidence"],
-            cache_hit=result["routing_decision"]["cache_hit"]
+            cache_hit=False,
         )
-        
-        # Return response
+
         return LLMResponse(
             response=result["response"],
             model_used=result["model_used"],
             cost=result["cost"],
             latency_ms=result["latency_ms"],
             routing_decision=routing_decision,
-            causal_analysis=None,  # Not implemented in Phase 2
-            request_id=request_id
+            causal_analysis=None,  # Phase 4
+            request_id=request_id,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        logger.exception("Unexpected error processing request %s", request_id)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/stats", response_model=DashboardStats)
 async def get_stats():
     """
-    Get dashboard statistics.
-    
-    Returns:
-    - Total requests processed
-    - Cache hit rate
-    - Cost savings vs GPT-4o-only
-    - Average latency
-    - Hallucinations caught
-    - Model distribution
+    Return aggregated dashboard statistics from SQLite.
+    Merges with default model keys so frontend always gets all 5 models.
     """
-    # TODO: Implement actual stats from database in Phase 4
-    
+    stats = await db.get_stats()
+
+    model_dist = dict(_DEFAULT_MODEL_DIST)
+    model_dist.update(stats["model_distribution"])
+
     return DashboardStats(
-        total_requests=0,
-        cache_hit_rate=0.0,
-        cost_savings=0.0,
-        avg_latency_ms=0,
-        hallucinations_caught=0,
-        model_distribution={
-            "llama-3": 0,
-            "gemini-1.5-flash": 0,
-            "gpt-4o-mini": 0,
-            "claude-haiku-3-5-sonnet-20241022": 0,
-            "gpt-4o": 0
-        }
+        total_requests=stats["total_requests"],
+        cache_hit_rate=stats["cache_hit_rate"],
+        cost_savings=stats["cost_savings"],
+        avg_latency_ms=stats["avg_latency_ms"],
+        hallucinations_caught=stats["hallucinations_caught"],
+        model_distribution=model_dist,
     )

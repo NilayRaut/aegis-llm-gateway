@@ -18,6 +18,7 @@ class RouterState(TypedDict):
     """State for the routing agent"""
     prompt: str
     context: str | None
+    forced_model: str | None  # set by security layer for high-stakes domains
     complexity_score: float
     model: str
     provider: str
@@ -107,19 +108,23 @@ class RouterAgent:
     
     async def _route_node(self, state: RouterState) -> RouterState:
         """
-        Validate routing decision and prepare for LLM call
-        
-        Args:
-            state: Current agent state
-            
-        Returns:
-            Updated state (no changes needed, just logging)
+        Validate routing decision and apply domain-forced model override if set.
+
+        If the security layer injected a forced_model (legal/medical/financial domains),
+        override the classifier's choice here. This is the "deterministic wall the
+        probabilistic system cannot breach."
         """
-        logger.info(f"Route node: {state['provider']} / {state['model']}")
-        
-        # Additional routing logic can go here
-        # For now, just log the decision
-        
+        if state.get("forced_model"):
+            state["model"] = state["forced_model"]
+            state["provider"] = "openai"
+            state["reasoning"] = (
+                f"Domain override: hard-routed to {state['forced_model']} "
+                f"(high-stakes domain — classifier decision bypassed)"
+            )
+            logger.info(f"Route node: forced override → {state['forced_model']}")
+        else:
+            logger.info(f"Route node: {state['provider']} / {state['model']}")
+
         return state
     
     async def _call_llm_node(self, state: RouterState) -> RouterState:
@@ -191,7 +196,7 @@ class RouterAgent:
         logger.info("Return node: agent execution complete")
         return state
     
-    async def process(self, prompt: str, context: str = None) -> dict:
+    async def process(self, prompt: str, context: str = None, forced_model: str | None = None) -> dict:
         """
         Process a request through the routing agent
         
@@ -206,6 +211,7 @@ class RouterAgent:
         initial_state: RouterState = {
             "prompt": prompt,
             "context": context,
+            "forced_model": forced_model,
             "complexity_score": 0.0,
             "model": "",
             "provider": "",
@@ -227,12 +233,13 @@ class RouterAgent:
             return {
                 "response": final_state["response"],
                 "model_used": final_state["model"],
+                "provider": final_state["provider"],
                 "complexity_score": final_state["complexity_score"],
                 "routing_decision": {
                     "model": final_state["model"],
                     "reason": final_state["reasoning"],
                     "confidence": final_state["confidence"],
-                    "cache_hit": False,  # Cache not implemented in Phase 2
+                    "cache_hit": False,
                 },
                 "cost": final_state["cost_usd"],
                 "latency_ms": final_state["latency_ms"],
@@ -246,6 +253,7 @@ class RouterAgent:
             return {
                 "response": f"Agent error: {str(e)}",
                 "model_used": "error",
+                "provider": "",
                 "complexity_score": 0.0,
                 "routing_decision": {
                     "model": "error",
