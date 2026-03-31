@@ -12,7 +12,8 @@ Resets on server restart — this is intentional for the demo.
 import logging
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+
+from app.services.embedder import get_embedder
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,12 @@ class SemanticCache:
     """
 
     def __init__(self, threshold: float = 0.85) -> None:
-        logger.info("SemanticCache: loading sentence-transformer model...")
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.store: list[dict] = []
         # Each entry: {"embedding": np.ndarray, "response_obj": dict, "prompt": str}
         self.threshold = threshold
         self._hits = 0
         self._misses = 0
-        logger.info("SemanticCache: ready (threshold=%.2f)", threshold)
+        logger.info("SemanticCache: ready (threshold=%.2f, model loads on first use)", threshold)
 
     def _cosine(self, a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors. Returns 0.0 if either is zero-norm."""
@@ -57,7 +56,7 @@ class SemanticCache:
             self._misses += 1
             return None
 
-        query_emb = self.model.encode(prompt)
+        query_emb = get_embedder().encode(prompt)
         for entry in self.store:
             similarity = self._cosine(query_emb, entry["embedding"])
             if similarity >= self.threshold:
@@ -74,7 +73,7 @@ class SemanticCache:
 
     def add(self, prompt: str, response_obj: dict) -> None:
         """Add a prompt+response to the cache."""
-        emb = self.model.encode(prompt)
+        emb = get_embedder().encode(prompt)
         self.store.append({
             "embedding": emb,
             "response_obj": response_obj,

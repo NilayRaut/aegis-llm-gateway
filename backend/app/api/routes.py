@@ -2,11 +2,12 @@
 API routes for Aegis backend.
 
 Full pipeline per request:
-  1. Security check  → block PII / injection / domain gate
-  2. Cache lookup    → return cached response if similarity ≥ 0.85
-  3. LLM routing     → classify complexity, route to cheapest capable model
-  4. Cache store     → save response for future cache hits
-  5. DB logging      → persist cost, latency, domain, risk_level for dashboard
+  1. Security check     → block PII / injection / domain gate
+  2. Cache lookup       → return cached response if similarity ≥ 0.85
+  3. LLM routing        → classify complexity, route to cheapest capable model
+  3.5 Hallucination     → Tier 1 hedging scan (all) + Tier 3 paraphrase variance (high-risk)
+  4. Cache store        → save response for future cache hits
+  5. DB logging         → persist cost, latency, domain, risk_level for dashboard
 """
 
 import uuid
@@ -17,12 +18,15 @@ from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     PromptRequest,
     LLMResponse,
+    CausalAnalysis,
     DashboardStats,
     RoutingDecision,
 )
 from app.agents.router import router_agent
 from app.services.security import security_checker
 from app.services.cache import semantic_cache
+from app.services.hallucination_detector import hallucination_detector
+from app.services.llm_client import llm_client
 from app import db
 
 logger = logging.getLogger(__name__)
@@ -39,13 +43,29 @@ _DEFAULT_MODEL_DIST = {
 }
 
 
+_RISK_ORDER = {"SAFE": 0, "MEDIUM": 1, "HIGH": 2}
+_RISK_BY_ORDER = {v: k for k, v in _RISK_ORDER.items()}
+
+
 def _risk_from_domain(domain: str) -> str:
-    """Map domain to risk level for DB logging."""
+    """Map domain to baseline risk level for DB logging."""
     if domain in ("legal", "medical"):
         return "HIGH"
     if domain == "financial":
         return "MEDIUM"
     return "SAFE"
+
+
+def _merge_risk(domain_risk: str, detection_is_hallucination: bool, pathway: str | None) -> str:
+    """
+    Combine domain-based risk with hallucination detection result.
+    Takes the higher of the two. Paraphrase variance → HIGH, hedging only → MEDIUM.
+    """
+    if not detection_is_hallucination:
+        return domain_risk
+    detection_risk = "HIGH" if pathway == "paraphrase_variance" else "MEDIUM"
+    higher = max(_RISK_ORDER[domain_risk], _RISK_ORDER[detection_risk])
+    return _RISK_BY_ORDER[higher]
 
 
 @router.post("/chat", response_model=LLMResponse)
@@ -111,6 +131,18 @@ async def chat(request: PromptRequest):
         if result.get("error"):
             raise HTTPException(status_code=500, detail=result["error"])
 
+        # ── Step 3.5: Hallucination detection ─────────────────────────────────
+        detection = await hallucination_detector.analyze(
+            prompt=request.prompt,
+            response=result["response"],
+            model=result["model_used"],
+            provider=result.get("provider", "openai"),
+            complexity_score=result.get("complexity_score", 0.0),
+            domain=domain,
+            llm_client=llm_client,
+        )
+        risk_level = _merge_risk(risk_level, detection.is_hallucination, detection.pathway)
+
         # ── Step 4: Store in cache for future hits ────────────────────────────
         semantic_cache.add(request.prompt, result)
 
@@ -135,6 +167,12 @@ async def chat(request: PromptRequest):
             confidence=result["routing_decision"]["confidence"],
             cache_hit=False,
         )
+        causal_analysis = CausalAnalysis(
+            confidence=detection.confidence,
+            pathway=detection.pathway,
+            is_hallucination=detection.is_hallucination,
+            explanation=detection.explanation,
+        )
 
         return LLMResponse(
             response=result["response"],
@@ -142,7 +180,7 @@ async def chat(request: PromptRequest):
             cost=result["cost"],
             latency_ms=result["latency_ms"],
             routing_decision=routing_decision,
-            causal_analysis=None,  # Phase 4
+            causal_analysis=causal_analysis,
             request_id=request_id,
         )
 
