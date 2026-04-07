@@ -6,8 +6,9 @@ Uses embeddings + heuristics to determine complexity (0.0 to 1.0)
 import re
 from typing import Tuple, Dict
 import logging
-from sentence_transformers import SentenceTransformer
 import numpy as np
+
+from app.services.embedder import get_embedder
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +54,8 @@ class ComplexityClassifier:
     }
     
     def __init__(self):
-        """Initialize classifier with embedding model"""
-        try:
-            # Use lightweight model for fast inference
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            logger.info("Sentence transformer model loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load sentence transformer: {e}")
-            self.embedding_model = None
+        """Initialize classifier — embedder loads lazily on first use."""
+        pass
     
     def score(self, prompt: str) -> float:
         """
@@ -101,13 +96,9 @@ class ComplexityClassifier:
         Estimate complexity based on semantic embedding
         Longer prompts with more diverse vocabulary have higher complexity
         """
-        if not self.embedding_model:
-            # Fallback: use token length estimate
-            return min(len(prompt.split()) / 100, 1.0)
-        
         try:
             # Generate embedding
-            embedding = self.embedding_model.encode(prompt)
+            embedding = get_embedder().encode(prompt)
             
             # Use embedding norm as a proxy for complexity
             # (more information = higher norm)
