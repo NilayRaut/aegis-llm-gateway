@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
+import json
 
 from app.api.routes import router
 from app.db import init_db
@@ -25,13 +26,16 @@ app = FastAPI(
 )
 
 # CORS middleware - allow frontend access
+_default_origins = [
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:3000",  # Alternative dev port
+]
+_env_origins = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = json.loads(_env_origins) if _env_origins else _default_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",   # Vite dev server
-        "http://localhost:3000",   # Alternative dev port
-        "https://aegis.vercel.app",  # Production frontend (update before deploy)
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
