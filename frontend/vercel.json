@@ -3,6 +3,6 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://aegis-backend.onrender.com/api/$1" }
+    { "source": "/api/(.*)", "destination": "https://aegis-llm-gateway.onrender.com/api/$1" }
   ]
 }
