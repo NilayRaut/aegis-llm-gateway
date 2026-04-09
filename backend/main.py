@@ -31,7 +31,14 @@ _default_origins = [
     "http://localhost:3000",  # Alternative dev port
 ]
 _env_origins = os.getenv("ALLOWED_ORIGINS", "")
-allowed_origins = json.loads(_env_origins) if _env_origins else _default_origins
+if _env_origins:
+    try:
+        allowed_origins = json.loads(_env_origins)
+    except json.JSONDecodeError:
+        # Support plain URL or comma-separated: "https://foo.vercel.app,http://localhost:5173"
+        allowed_origins = [o.strip() for o in _env_origins.split(",") if o.strip()]
+else:
+    allowed_origins = _default_origins
 
 app.add_middleware(
     CORSMiddleware,
