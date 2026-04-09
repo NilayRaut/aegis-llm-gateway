@@ -48,10 +48,10 @@ class TestComplexityScoring:
 
 
 class TestRoutingTable:
-    def test_low_score_routes_to_ollama(self):
+    def test_low_score_routes_to_groq(self):
         model, provider = classifier.route(0.1)
-        assert provider == "ollama"
-        assert model == "llama3.1"
+        assert provider == "groq"
+        assert model == "llama-3.1-8b-instant"
 
     def test_mid_low_score_routes_to_gemini(self):
         model, provider = classifier.route(0.3)

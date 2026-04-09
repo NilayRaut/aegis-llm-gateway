@@ -16,6 +16,9 @@ _LEGAL = [
     "contract", "lawsuit", "liability", "enforceable", "statute", "regulation",
     "attorney", "compliance", "jurisdiction", "copyright", "patent", "clause",
     "arbitration", "non-compete", "noncompete", "legal advice", "court",
+    "gdpr", "privacy regulation", "data protection", "data breach",
+    "data subject", "article 17", "right to erasure", "right to be forgotten",
+    "dpa", "privacy law", "personal data",
 ]
 
 _MEDICAL = [

@@ -48,12 +48,12 @@ class TestTier1HedgingScan:
         assert not result.is_hallucination
         assert result.confidence == 0.70
 
-    def test_two_hedges_still_safe(self, detector):
-        # "i think" + "might be" = exactly 2 hedges → SAFE
+    def test_two_hedges_flags_hallucination(self, detector):
+        # threshold lowered to 2: "i think" + "might be" = 2 hedges → FLAG
         result = detector.tier1_hedging_scan(
             "I think the answer might be 42, based on the data."
         )
-        assert not result.is_hallucination
+        assert result.is_hallucination
 
     def test_three_hedges_flags_hallucination(self, detector):
         result = detector.tier1_hedging_scan(

@@ -93,7 +93,7 @@ class HallucinationDetector:
         lower = response.lower()
         hits = [p for p in HEDGING_PHRASES if p in lower]
 
-        if len(hits) >= 3:
+        if len(hits) >= 2:
             confidence = min(0.50 + 0.05 * len(hits), 0.85)
             sample = ", ".join(f'"{h}"' for h in hits[:3])
             return DetectionResult(
@@ -261,7 +261,15 @@ class HallucinationDetector:
         """
         tier1 = self.tier1_hedging_scan(response)
 
-        run_tier3 = domain in ("legal", "medical", "financial") or complexity_score > 0.7
+        factual_patterns = any(kw in prompt.lower() for kw in [
+            "what did", "when did", "who said", "in what year", "historically",
+            "according to", "what was", "where did",
+        ])
+        run_tier3 = (
+            domain in ("legal", "medical", "financial")
+            or complexity_score > 0.6
+            or factual_patterns
+        )
         if not run_tier3:
             return tier1
 

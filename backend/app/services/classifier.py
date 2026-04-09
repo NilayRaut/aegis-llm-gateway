@@ -49,7 +49,12 @@ class ComplexityClassifier:
         ],
         'technical': [
             'algorithm', 'implementation', 'architecture', 'optimization',
-            'debug', 'refactor', 'scalability', 'latency', 'throughput'
+            'debug', 'refactor', 'scalability', 'latency', 'throughput',
+            'python', 'javascript', 'java', 'function', 'array', 'sort',
+            'gradient', 'neural', 'model', 'training', 'equation', 'recursion',
+        ],
+        'legal': [
+            'legal', 'law', 'rights', 'obligation', 'penalty', 'fine',
         ]
     }
     
@@ -69,21 +74,21 @@ class ComplexityClassifier:
         """
         score = 0.0
         
-        # 1. Semantic complexity (embedding-based)
+        # 1. Semantic complexity (embedding norm — useless with L2-normalized vectors, weight=0)
         semantic_score = self._semantic_complexity(prompt)
-        score += semantic_score * 0.3
-        
+        score += semantic_score * 0.0
+
         # 2. Text length and structure
         structure_score = self._structure_complexity(prompt)
         score += structure_score * 0.25
-        
-        # 3. Question type
+
+        # 3. Question type — primary differentiator for short prompts
         question_score = self._question_complexity(prompt)
-        score += question_score * 0.25
-        
+        score += question_score * 0.45
+
         # 4. Domain complexity
         domain_score = self._domain_complexity(prompt)
-        score += domain_score * 0.2
+        score += domain_score * 0.30
         
         # Normalize to 0.0-1.0
         score = min(max(score, 0.0), 1.0)
@@ -117,9 +122,18 @@ class ComplexityClassifier:
         """
         score = 0.0
         
-        # Word count (normalize around 50 words)
-        word_count = len(prompt.split())
-        score += min(word_count / 100, 1.0) * 0.4
+        # Word count — piecewise so short prompts score low and long prompts score high
+        words = prompt.split()
+        word_count = len(words)
+        if word_count < 10:
+            word_score = word_count / 10.0 * 0.1
+        elif word_count < 30:
+            word_score = 0.1 + (word_count - 10) / 20.0 * 0.2
+        elif word_count < 80:
+            word_score = 0.3 + (word_count - 30) / 50.0 * 0.2
+        else:
+            word_score = min(0.5 + (word_count - 80) / 120.0 * 0.3, 0.8)
+        score += word_score * 0.4
         
         # Sentence count
         sentences = re.split(r'[.!?]+', prompt)
@@ -159,9 +173,9 @@ class ComplexityClassifier:
         if any(re.search(pattern, prompt, re.IGNORECASE) for pattern in analytical_patterns):
             score += 0.5
         
-        # Complex reasoning
+        # Complex reasoning and implementation/creation tasks
         complex_patterns = [
-            r'\b(optimize|design|architect|implement)\b',
+            r'\b(optimize|design|architect|implement|write|code|create|build|derive|prove|debug|refactor)\b',
             r'\b(trade-off|constraint|requirement)\b',
         ]
         if any(re.search(pattern, prompt, re.IGNORECASE) for pattern in complex_patterns):
