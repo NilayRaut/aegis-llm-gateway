@@ -13,3 +13,5 @@ servers:
         value: 3.11.0
       - key: OPENAI_API_KEY
         sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
