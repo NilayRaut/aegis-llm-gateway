@@ -47,15 +47,18 @@ class LLMClient:
         # OpenAI
         "gpt-4o": {"input": 2.50, "output": 10.00},
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-        
+
         # Anthropic
         "claude-haiku-3-5-sonnet-20241022": {"input": 0.25, "output": 1.25},
-        
+
         # Google
         "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
-        
+
         # Ollama (local, free)
         "llama3.1": {"input": 0.0, "output": 0.0},
+
+        # Groq (free tier)
+        "llama-3.1-8b-instant": {"input": 0.0, "output": 0.0},
     }
     
     def __init__(self):
@@ -63,6 +66,7 @@ class LLMClient:
         self.openai_client = None
         self.anthropic_client = None
         self.ollama_client = None
+        self.groq_client = None
         self._initialize_clients()
     
     def _initialize_clients(self):
@@ -92,6 +96,14 @@ class LLMClient:
         ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.ollama_client = AsyncClient(host=ollama_url)
         logger.info(f"Ollama client initialized at {ollama_url}")
+
+        # Groq
+        if groq_key := os.getenv("GROQ_API_KEY"):
+            from groq import AsyncGroq
+            self.groq_client = AsyncGroq(api_key=groq_key)
+            logger.info("Groq client initialized")
+        else:
+            logger.warning("GROQ_API_KEY not found, Groq calls will fail")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -361,6 +373,52 @@ class LLMClient:
             provider="ollama"
         )
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,))
+    )
+    async def call_groq(
+        self,
+        model: str,
+        messages: list,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+    ) -> LLMResponse:
+        """
+        Call Groq API (llama-3.1-8b-instant — free tier, ~500 tok/s)
+
+        Groq uses an OpenAI-compatible chat completions API.
+        """
+        if not self.groq_client:
+            raise ValueError("Groq client not initialized. Check GROQ_API_KEY")
+
+        import time
+        start_time = time.time()
+
+        response = await self.groq_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+        cost = calculate_cost(model, input_tokens, output_tokens, self.COST_PER_1M)
+
+        return LLMResponse(
+            content=response.choices[0].message.content,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            provider="groq",
+        )
+
     async def call_llm(
         self,
         provider: str,
@@ -371,14 +429,14 @@ class LLMClient:
     ) -> LLMResponse:
         """
         Route to appropriate LLM provider
-        
+
         Args:
-            provider: Provider name (openai, anthropic, google, ollama)
+            provider: Provider name (openai, anthropic, google, ollama, groq)
             model: Model name
             messages: List of message dicts
             temperature: Sampling temperature
             max_tokens: Maximum tokens in response
-            
+
         Returns:
             LLMResponse from the appropriate provider
         """
@@ -387,6 +445,7 @@ class LLMClient:
             "anthropic": self.call_anthropic,
             "google": self.call_google,
             "ollama": self.call_ollama,
+            "groq": self.call_groq,
         }
         
         if provider not in provider_map:
