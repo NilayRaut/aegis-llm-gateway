@@ -9,7 +9,6 @@ to stay within the 512MB RAM limit on Render's free tier (~100MB vs ~400MB).
 import logging
 
 import numpy as np
-from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +19,9 @@ class _EmbedderWrapper:
     """Thin wrapper around fastembed.TextEmbedding preserving the .encode() interface."""
 
     def __init__(self) -> None:
+        # Lazy import: defer onnxruntime load to first request, not app startup.
+        # This keeps startup memory well under Render's 512MB free-tier limit.
+        from fastembed import TextEmbedding
         logger.info("Embedder: loading all-MiniLM-L6-v2 via fastembed (ONNX)...")
         self._model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
         logger.info("Embedder: ready")
