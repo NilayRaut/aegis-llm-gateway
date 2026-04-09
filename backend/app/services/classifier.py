@@ -37,7 +37,8 @@ class ComplexityClassifier:
     DOMAIN_KEYWORDS = {
         'legal': [
             'contract', 'lawsuit', 'liability', 'jurisdiction', 'statute',
-            'regulation', 'compliance', 'litigation', 'plaintiff', 'defendant'
+            'regulation', 'compliance', 'litigation', 'plaintiff', 'defendant',
+            'legal', 'law', 'rights', 'obligation', 'penalty', 'fine',
         ],
         'medical': [
             'diagnosis', 'treatment', 'symptom', 'pathology', 'medication',
@@ -53,9 +54,6 @@ class ComplexityClassifier:
             'python', 'javascript', 'java', 'function', 'array', 'sort',
             'gradient', 'neural', 'model', 'training', 'equation', 'recursion',
         ],
-        'legal': [
-            'legal', 'law', 'rights', 'obligation', 'penalty', 'fine',
-        ]
     }
     
     def __init__(self):
