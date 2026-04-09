@@ -26,7 +26,7 @@ class ComplexityClassifier:
     
     # Routing thresholds: (min_score, max_score) -> model
     ROUTING_TABLE = {
-        (0.0, 0.2): ("llama3.1", "ollama"),
+        (0.0, 0.2): ("llama-3.1-8b-instant", "groq"),
         (0.2, 0.4): ("gemini-1.5-flash", "google"),
         (0.4, 0.6): ("gpt-4o-mini", "openai"),
         (0.6, 0.8): ("claude-haiku-3-5-sonnet-20241022", "anthropic"),

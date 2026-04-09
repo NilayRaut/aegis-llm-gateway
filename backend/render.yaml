@@ -15,3 +15,5 @@ servers:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: GROQ_API_KEY
+        sync: false

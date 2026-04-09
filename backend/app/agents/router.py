@@ -3,9 +3,11 @@ LangGraph Router Agent - Stateful routing agent for LLM requests
 Orchestrates: classify → route → call_llm → return
 """
 
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Optional
 from operator import add
 import logging
+import os
+import httpx
 from langgraph.graph import StateGraph, END
 
 from app.services.classifier import classifier
@@ -40,7 +42,24 @@ class RouterAgent:
     def __init__(self):
         """Initialize the router agent"""
         self.graph = self._build_graph()
+        self._ollama_reachable: Optional[bool] = None  # cached after first check
         logger.info("Router agent initialized with compiled graph")
+
+    def _ollama_available(self) -> bool:
+        """
+        Check once whether a local Ollama server is reachable.
+        Result is cached for the lifetime of the process.
+        """
+        if self._ollama_reachable is not None:
+            return self._ollama_reachable
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        try:
+            r = httpx.get(f"{ollama_url}/api/tags", timeout=1.0)
+            self._ollama_reachable = r.status_code == 200
+        except Exception:
+            self._ollama_reachable = False
+        logger.info("Ollama reachable: %s", self._ollama_reachable)
+        return self._ollama_reachable
     
     def _build_graph(self) -> StateGraph:
         """
@@ -152,13 +171,28 @@ class RouterAgent:
         })
 
         try:
-            response = await llm_client.call_llm(
-                provider=state["provider"],
-                model=state["model"],
-                messages=messages,
-                temperature=0.7,
-                max_tokens=500,
-            )
+            # For the cheap tier (groq), prefer local Ollama when available
+            if state["provider"] == "groq" and self._ollama_available():
+                logger.info("Local Ollama reachable — using llama3.1 instead of Groq")
+                response = await llm_client.call_ollama(
+                    model="llama3.1",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=500,
+                )
+                state["model"] = "llama3.1"
+                state["provider"] = "ollama"
+                state["reasoning"] = state["reasoning"].replace(
+                    "llama-3.1-8b-instant", "llama3.1"
+                ) + " (local Ollama)"
+            else:
+                response = await llm_client.call_llm(
+                    provider=state["provider"],
+                    model=state["model"],
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=500,
+                )
             state["response"] = response.content
             state["input_tokens"] = response.input_tokens
             state["output_tokens"] = response.output_tokens
