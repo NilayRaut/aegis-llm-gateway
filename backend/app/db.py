@@ -98,6 +98,24 @@ async def log_request(
     await asyncio.to_thread(_insert)
 
 
+async def get_recent_requests(limit: int = 50) -> list[dict]:
+    """Return the last N requests ordered by timestamp descending."""
+    def _query():
+        conn = _get_conn()
+        rows = conn.execute(
+            """SELECT id, timestamp, model_used, provider, cost_usd, latency_ms,
+                      complexity_score, domain, cache_hit, risk_level, security_blocked
+               FROM requests
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    return await asyncio.to_thread(_query)
+
+
 async def get_stats() -> dict:
     """
     Aggregate statistics for the dashboard.
