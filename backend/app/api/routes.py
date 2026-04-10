@@ -119,6 +119,10 @@ async def chat(request: PromptRequest):
                 routing_decision=routing,
                 causal_analysis=None,
                 request_id=request_id,
+                complexity_score=cached.get("complexity_score", 0.0),
+                domain=domain,
+                risk_level=risk_level,
+                provider=cached.get("provider", ""),
             )
 
         # ── Step 3: Route through LangGraph agent ─────────────────────────────
@@ -184,6 +188,10 @@ async def chat(request: PromptRequest):
             routing_decision=routing_decision,
             causal_analysis=causal_analysis,
             request_id=request_id,
+            complexity_score=result.get("complexity_score", 0.0),
+            domain=domain,
+            risk_level=risk_level,
+            provider=result.get("provider", ""),
         )
 
     except HTTPException:
@@ -191,6 +199,12 @@ async def chat(request: PromptRequest):
     except Exception as e:
         logger.exception("Unexpected error processing request %s", request_id)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/history")
+async def history(limit: int = 50):
+    """Return recent request history for the frontend dashboard."""
+    return await db.get_recent_requests(limit=min(limit, 100))
 
 
 @router.get("/stats", response_model=DashboardStats)

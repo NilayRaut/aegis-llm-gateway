@@ -19,6 +19,10 @@ export interface LLMResponse {
   routing_decision: RoutingDecision
   causal_analysis?: CausalAnalysis
   request_id: string
+  complexity_score?: number
+  domain?: string
+  risk_level?: string
+  provider?: string
 }
 
 export interface DashboardStats {
@@ -28,6 +32,28 @@ export interface DashboardStats {
   avg_latency_ms: number
   hallucinations_caught: number
   model_distribution: Record<string, number>
+}
+
+export interface HistoryItem {
+  id: string
+  timestamp: string  // ISO string
+  prompt: string
+  response: LLMResponse
+}
+
+export interface StoredHistory {
+  version: 1
+  requests: HistoryItem[]
+}
+
+// Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow
+export const MODEL_COLORS: Record<string, string> = {
+  'llama-3.1-8b-instant': '#10b981',
+  'llama3.1':             '#10b981',
+  'gemini-1.5-flash':     '#3b82f6',
+  'gpt-4o-mini':          '#8b5cf6',
+  'claude-haiku-3-5-sonnet-20241022': '#f59e0b',
+  'gpt-4o':               '#ef4444',
 }
 
 export const DEMO_PROMPTS = [

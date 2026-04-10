@@ -34,16 +34,20 @@ class CausalAnalysis(BaseModel):
 class LLMResponse(BaseModel):
     """Response schema for chat endpoint"""
     model_config = ConfigDict(protected_namespaces=())
-    
+
     response: str = Field(..., description="The LLM's response")
     model_used: str = Field(..., description="Which model generated the response")
     cost: float = Field(..., ge=0.0, description="Cost of this request in USD")
     latency_ms: int = Field(..., ge=0, description="Response latency in milliseconds")
-    
+
     routing_decision: RoutingDecision = Field(..., description="Routing decision details")
     causal_analysis: Optional[CausalAnalysis] = Field(None, description="Causal analysis results")
-    
+
     request_id: str = Field(..., description="Unique request identifier")
+    complexity_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Prompt complexity score")
+    domain: str = Field(default="general", description="Domain classification")
+    risk_level: str = Field(default="SAFE", description="Risk level: SAFE, MEDIUM, or HIGH")
+    provider: str = Field(default="", description="LLM provider name")
 
 
 class DashboardStats(BaseModel):
