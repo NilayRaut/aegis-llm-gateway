@@ -44,7 +44,7 @@ export function Dashboard({ stats }: Props) {
           <div className="bg-slate-900/50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-2">
               <Shield className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-slate-400">Risk Flags</span>
+              <span className="text-xs text-slate-400">Risk Checks</span>
             </div>
             <p className="text-2xl font-bold text-amber-400">
               {stats ? stats.hallucinations_caught : 0}
