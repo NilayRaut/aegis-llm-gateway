@@ -62,6 +62,18 @@ HEDGING_PHRASES: list[str] = [
     "based on my training",
     "up to my knowledge cutoff",
     "i cannot guarantee",
+    "not currently able",
+    "not able to",
+    "i'm unable",
+    "i am unable",
+    "unable to provide",
+    "unable to share",
+    "cannot provide",
+    "i cannot access",
+    "don't have access",
+    "do not have access",
+    "please note",
+    "real-time",
 ]
 
 
@@ -264,6 +276,8 @@ class HallucinationDetector:
         factual_patterns = any(kw in prompt.lower() for kw in [
             "what did", "when did", "who said", "in what year", "historically",
             "according to", "what was", "where did",
+            "what time", "current time", "right now", "currently", "today",
+            "what date", "what day", "this week", "this year",
         ])
         run_tier3 = (
             domain in ("legal", "medical", "financial")
