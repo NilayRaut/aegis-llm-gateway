@@ -144,7 +144,9 @@ async def chat(request: PromptRequest):
         risk_level = _merge_risk(risk_level, detection.is_hallucination, detection.pathway)
 
         # ── Step 4: Store in cache for future hits ────────────────────────────
-        semantic_cache.add(request.prompt, result)
+        # Don't cache flagged responses — avoids perpetuating bad answers
+        if not detection.is_hallucination:
+            semantic_cache.add(request.prompt, result)
 
         # ── Step 5: Log to DB ─────────────────────────────────────────────────
         await db.log_request(
