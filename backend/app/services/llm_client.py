@@ -15,7 +15,8 @@ load_dotenv()
 
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 from ollama import AsyncClient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -65,6 +66,7 @@ class LLMClient:
         """Initialize all LLM clients"""
         self.openai_client = None
         self.anthropic_client = None
+        self.google_client = None
         self.ollama_client = None
         self.groq_client = None
         self._initialize_clients()
@@ -87,9 +89,10 @@ class LLMClient:
         
         # Google
         if google_key := os.getenv("GOOGLE_API_KEY"):
-            genai.configure(api_key=google_key)
-            logger.info("Google Generative AI client initialized")
+            self.google_client = genai.Client(api_key=google_key)
+            logger.info("Google GenAI client initialized")
         else:
+            self.google_client = None
             logger.warning("GOOGLE_API_KEY not found, Gemini calls will fail")
         
         # Ollama (local)
@@ -260,63 +263,54 @@ class LLMClient:
         Returns:
             LLMResponse with content, token counts, cost, latency
         """
-        try:
-            import time
-            start_time = time.time()
-            
-            # Convert OpenAI format to Gemini format
-            gemini_messages = []
-            system_instruction = ""
-            
-            for msg in messages:
-                if msg["role"] == "system":
-                    system_instruction = msg["content"]
-                else:
-                    gemini_messages.append({
-                        "role": "user" if msg["role"] == "user" else "model",
-                        "parts": [{"text": msg["content"]}]
-                    })
-            
-            genai_model = genai.GenerativeModel(
-                model_name=model,
-                system_instruction=system_instruction
-            )
-            
-            generation_config = genai.types.GenerationConfig(
+        if not self.google_client:
+            raise ValueError("Google client not initialized. Check GOOGLE_API_KEY")
+
+        import time
+        start_time = time.time()
+
+        # Convert OpenAI format to Gemini format
+        gemini_messages = []
+        system_instruction = ""
+
+        for msg in messages:
+            if msg["role"] == "system":
+                system_instruction = msg["content"]
+            else:
+                gemini_messages.append({
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [{"text": msg["content"]}],
+                })
+
+        response = await self.google_client.aio.models.generate_content(
+            model=model,
+            contents=gemini_messages,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_instruction or None,
                 temperature=temperature,
                 max_output_tokens=max_tokens,
-            )
-            
-            response = await genai_model.generate_content_async(
-                gemini_messages,
-                generation_config=generation_config
-            )
-            
-            latency_ms = int((time.time() - start_time) * 1000)
-            
-            # Gemini doesn't provide exact token counts, estimate
-            input_tokens = sum(len(msg.get("parts", [{}])[0].get("text", "")) // 4 
-                              for msg in gemini_messages)
-            output_tokens = len(response.text) // 4
-            cost = calculate_cost(
-                model,
-                input_tokens,
-                output_tokens,
-                self.COST_PER_1M
-            )
-            
-            return LLMResponse(
-                content=response.text,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=cost,
-                latency_ms=latency_ms,
-                provider="google"
-            )
-        except Exception as e:
-            logger.error(f"Google API error: {e}")
-            raise
+            ),
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        # Gemini doesn't provide exact token counts, estimate
+        input_tokens = sum(
+            len(msg.get("parts", [{}])[0].get("text", "")) // 4
+            for msg in gemini_messages
+        )
+        output_tokens = len(response.text) // 4
+        cost = calculate_cost(model, input_tokens, output_tokens, self.COST_PER_1M)
+
+        return LLMResponse(
+            content=response.text,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            provider="google",
+        )
     
     @retry(
         stop=stop_after_attempt(3),
