@@ -82,13 +82,13 @@ Refutation tests: placebo_treatment, random_common_cause
 
 ## Model Pool
 
-| Tier | Model | Cost per 1M Tokens | Use Case |
-|------|-------|--------------------|----------|
-| Free | Llama 3.1 8B (local, Ollama) | $0.00 | Simple factual, conversational |
-| Budget | Gemini 1.5 Flash | $0.075 | Low-medium complexity |
-| Standard | GPT-4o-mini | $0.150 | Medium complexity |
-| Quality | Claude 3.5 Haiku | $0.250 | Medium-high, nuanced reasoning |
-| Premium | GPT-4o | $2.500 | Complex reasoning, high-stakes domains |
+| Score Range | Model | Cost per 1M Tokens | Use Case |
+|-------------|-------|--------------------|----------|
+| 0.00–0.20 | Llama 3.1 8B (Groq / local Ollama) | $0.00 | Simple factual, conversational |
+| 0.20–0.35 | Gemini 1.5 Flash | $0.075 | Low-medium complexity |
+| 0.35–0.50 | GPT-4o-mini | $0.150 | Medium complexity |
+| 0.50–0.70 | Claude 3.5 Haiku | $0.250 | Medium-high, nuanced reasoning |
+| 0.70–1.00 | GPT-4o | $2.500 | Complex reasoning, high-stakes domains |
 
 Routing is automatic — the complexity classifier scores each prompt (0.0–1.0) and routes to the cheapest model capable of handling it. Legal, medical, and financial queries are always hard-routed to GPT-4o regardless of complexity score.
 
@@ -158,20 +158,22 @@ pytest tests/ -v
 
 ```python
 score = (
-    0.30 * semantic_norm(embedding)        +  # all-MiniLM-L6-v2 embedding norm
-    0.25 * structure_score(words, sents)   +  # length and sentence count
-    0.25 * question_type_score(verbs)      +  # factual vs analytical vs design
-    0.20 * domain_keyword_density             # legal/medical/financial/technical
+    0.20 * vocab_richness(prompt)          +  # type-token ratio + avg word length
+    0.20 * structure_score(words, sents)   +  # length and sentence count
+    0.35 * question_type_score(verbs)      +  # factual vs analytical vs design (exclusive tiers)
+    0.25 * domain_similarity                  # cosine sim to legal/medical/financial/technical prototypes
 )
 
 routing_table = {
-    (0.0, 0.2): "llama3.1",           # free, local
-    (0.2, 0.4): "gemini-1.5-flash",
-    (0.4, 0.6): "gpt-4o-mini",
-    (0.6, 0.8): "claude-haiku",
-    (0.8, 1.0): "gpt-4o",
+    (0.00, 0.20): "llama-3.1-8b-instant",  # free, local (Groq or Ollama)
+    (0.20, 0.35): "gemini-1.5-flash",
+    (0.35, 0.50): "gpt-4o-mini",
+    (0.50, 0.70): "claude-3-5-haiku-20241022",
+    (0.70, 1.00): "gpt-4o",
 }
 ```
+
+Question type tiers are mutually exclusive — the highest matching tier wins (complex > analytical > factual). Routing confidence is computed from distance to the nearest tier boundary: scores near boundaries return lower confidence than scores deep in a band.
 
 ### Semantic Cache
 
@@ -190,16 +192,20 @@ Three-gate check before any routing:
 
 **Tier 1 — Hedging phrase detection (free, runs on all responses)**
 
-Scans response for 25 confidence-undermining phrases: `"I'm not sure"`, `"I believe"`, `"might be"`, `"as of my knowledge cutoff"`, etc. Three or more hits → flagged as potential hallucination (MEDIUM risk).
+Scans response for confidence-undermining phrases: `"I'm not sure"`, `"I believe"`, `"might be"`, `"as of my knowledge cutoff"`, etc. Three or more hits → flagged as potential hallucination (MEDIUM risk).
 
 **Tier 3 — Paraphrase variance (gated)**
 
-Only runs if `domain in (legal, medical, financial)` OR `complexity_score > 0.7`:
+Only runs if `domain in (legal, medical, financial)` OR `complexity_score > 0.6` OR prompt contains factual question patterns (`"what did"`, `"when did"`, `"who said"`, etc.):
 
 ```python
-paraphrases = generate(prompt, via="gpt-4o-mini", n=2)   # ~$0.00002
-r1, r2 = await asyncio.gather(query(p1, model), query(p2, model))  # parallel
-variance = 1 - avg_cosine_similarity(embed([original, r1, r2]))
+paraphrases = generate(prompt, via="gpt-4o-mini", n=2, temperature=0.7)  # ~$0.00002
+r1, r2 = await asyncio.gather(query(p1, model, temp=0), query(p2, model, temp=0))
+
+# Only paraphrase responses compared — both at temperature=0 for a clean causal signal.
+# The original response (generated at temp=0.7) is excluded to avoid mixing
+# stochastic and deterministic outputs.
+variance = 1 - cosine_similarity(embed(r1), embed(r2))
 
 if variance > 0.35:   # θ calibrated offline via DoWhy
     return HIGH_RISK  # pathway="paraphrase_variance"
