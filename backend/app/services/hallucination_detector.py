@@ -74,7 +74,11 @@ HEDGING_PHRASES: list[str] = [
     "do not have access",
     "please note",
     "real-time",
-    # Epistemic uncertainty — model acknowledging it can't find/verify something
+]
+
+# Strong epistemic markers — model explicitly saying it cannot verify/find something.
+# A single hit is sufficient to flag MEDIUM risk (unlike soft hedges which need 3+).
+EPISTEMIC_PHRASES: list[str] = [
     "cannot find",
     "cannot verify",
     "cannot confirm",
@@ -113,6 +117,22 @@ class HallucinationDetector:
         - 3+ hits  → FLAG, confidence scales with hit count (0.55–0.85)
         """
         lower = response.lower()
+
+        # Check strong epistemic markers first — 1 hit is enough to flag MEDIUM.
+        # These indicate the model explicitly cannot confirm the queried information.
+        epistemic_hits = [p for p in EPISTEMIC_PHRASES if p in lower]
+        if epistemic_hits:
+            sample = ", ".join(f'"{h}"' for h in epistemic_hits[:2])
+            return DetectionResult(
+                is_hallucination=True,
+                confidence=0.75,
+                explanation=(
+                    f"Model explicitly could not verify the queried information "
+                    f"({sample}). The claim may be unverifiable or fabricated."
+                ),
+                pathway="epistemic_uncertainty",
+            )
+
         hits = [p for p in HEDGING_PHRASES if p in lower]
 
         if len(hits) >= 3:
@@ -280,9 +300,10 @@ class HallucinationDetector:
         """
         Run appropriate detection tier(s) and return a single DetectionResult.
 
-        Tier 1 always runs.
-        Tier 3 runs when: domain in (legal, medical, financial) OR complexity_score > 0.7.
-        When Tier 3 runs, its result overrides Tier 1 (Tier 3 is more rigorous).
+        Tier 1 always runs. Tier 3 runs when: domain in (legal, medical, financial)
+        OR complexity_score > 0.6 OR factual_patterns detected.
+        Tier 3 overrides Tier 1 only when Tier 3 detects high variance.
+        If Tier 3 is clean but Tier 1 flagged epistemic uncertainty, Tier 1 wins.
         """
         tier1 = self.tier1_hedging_scan(response)
 
@@ -315,6 +336,13 @@ class HallucinationDetector:
             provider=provider,
             llm_client=llm_client,
         )
+        # Tier 3 overrides Tier 1 when it detects high variance (more rigorous signal).
+        # But if Tier 3 is clean and Tier 1 caught an epistemic marker, keep Tier 1 —
+        # consistent uncertainty across paraphrases still means the claim is unverifiable.
+        if tier3.is_hallucination:
+            return tier3
+        if tier1.is_hallucination:
+            return tier1
         return tier3
 
 
