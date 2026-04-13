@@ -48,12 +48,13 @@ class TestTier1HedgingScan:
         assert not result.is_hallucination
         assert result.confidence == 0.70
 
-    def test_two_hedges_flags_hallucination(self, detector):
-        # threshold lowered to 2: "i think" + "might be" = 2 hedges → FLAG
+    def test_two_hedges_is_safe_but_noted(self, detector):
+        # 2 hedges is below the 3+ threshold: "i think" + "might be" → SAFE but noted
         result = detector.tier1_hedging_scan(
             "I think the answer might be 42, based on the data."
         )
-        assert result.is_hallucination
+        assert not result.is_hallucination
+        assert result.confidence == 0.70
 
     def test_three_hedges_flags_hallucination(self, detector):
         result = detector.tier1_hedging_scan(
@@ -103,10 +104,10 @@ class TestTier3ParaphraseVariance:
         ))
 
         # Mock embedder to return very similar vectors (variance will be ~0)
+        # Two rows: one per paraphrase response (original is no longer included)
         similar_vectors = np.array([
             [1.0, 0.0, 0.0],
             [0.99, 0.01, 0.0],
-            [0.98, 0.02, 0.0],
         ], dtype=np.float32)
 
         with patch("app.services.hallucination_detector.get_embedder") as mock_emb:
@@ -132,11 +133,11 @@ class TestTier3ParaphraseVariance:
             "Completely different answer."
         ))
 
-        # Orthogonal vectors → cosine similarity ≈ 0, variance ≈ 1.0
+        # Orthogonal vectors → cosine similarity = 0, variance = 1.0
+        # Two rows: one per paraphrase response (original is no longer included)
         divergent_vectors = np.array([
             [1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
         ], dtype=np.float32)
 
         with patch("app.services.hallucination_detector.get_embedder") as mock_emb:
