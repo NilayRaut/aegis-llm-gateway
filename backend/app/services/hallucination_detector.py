@@ -105,7 +105,7 @@ class HallucinationDetector:
         lower = response.lower()
         hits = [p for p in HEDGING_PHRASES if p in lower]
 
-        if len(hits) >= 2:
+        if len(hits) >= 3:
             confidence = min(0.50 + 0.05 * len(hits), 0.85)
             sample = ", ".join(f'"{h}"' for h in hits[:3])
             return DetectionResult(
@@ -213,9 +213,12 @@ class HallucinationDetector:
             )
 
         # ── Step 3: Embed and compute variance ───────────────────────────────────
-        all_texts = [original_response] + valid_responses
+        # Compare only the paraphrase responses (both generated at temperature=0.0).
+        # Excluding the original avoids mixing it with stochastic paraphrase outputs
+        # and keeps the signal clean: we measure how much the model's answer shifts
+        # when the question is rephrased, not whether it matches its original output.
         embedder = get_embedder()
-        embeddings = embedder.encode(all_texts, normalize_embeddings=True)
+        embeddings = embedder.encode(valid_responses, normalize_embeddings=True)
 
         # Pairwise cosine similarity (dot product is correct since embeddings are L2-normalized)
         n = len(embeddings)
@@ -228,8 +231,8 @@ class HallucinationDetector:
         variance = 1.0 - avg_similarity
 
         logger.info(
-            "Tier 3: variance=%.3f (threshold=%.2f, avg_sim=%.3f, n_responses=%d)",
-            variance, THETA, avg_similarity, len(all_texts),
+            "Tier 3: variance=%.3f (threshold=%.2f, avg_sim=%.3f, n_paraphrases=%d)",
+            variance, THETA, avg_similarity, len(valid_responses),
         )
 
         if variance > THETA:

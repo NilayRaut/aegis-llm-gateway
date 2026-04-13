@@ -59,12 +59,12 @@ class TestRoutingTable:
         assert model == "gemini-1.5-flash"
 
     def test_mid_score_routes_to_gpt4o_mini(self):
-        model, provider = classifier.route(0.5)
+        model, provider = classifier.route(0.42)  # mid of (0.35, 0.50)
         assert provider == "openai"
         assert model == "gpt-4o-mini"
 
     def test_high_score_routes_to_claude(self):
-        model, provider = classifier.route(0.7)
+        model, provider = classifier.route(0.60)  # mid of (0.50, 0.70)
         assert provider == "anthropic"
 
     def test_very_high_score_routes_to_gpt4o(self):

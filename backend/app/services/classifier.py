@@ -32,7 +32,7 @@ class ComplexityClassifier:
         (0.0,  0.20): ("llama-3.1-8b-instant", "groq"),
         (0.20, 0.35): ("gemini-1.5-flash", "google"),
         (0.35, 0.50): ("gpt-4o-mini", "openai"),
-        (0.50, 0.70): ("claude-haiku-3-5-sonnet-20241022", "anthropic"),
+        (0.50, 0.70): ("claude-3-5-haiku-20241022", "anthropic"),
         (0.70, 1.00): ("gpt-4o", "openai"),
     }
     
@@ -77,21 +77,21 @@ class ComplexityClassifier:
         """
         score = 0.0
         
-        # 1. Semantic complexity (embedding norm — useless with L2-normalized vectors, weight=0)
+        # 1. Semantic complexity (vocabulary richness: TTR + avg word length)
         semantic_score = self._semantic_complexity(prompt)
-        score += semantic_score * 0.0
+        score += semantic_score * 0.20
 
         # 2. Text length and structure
         structure_score = self._structure_complexity(prompt)
-        score += structure_score * 0.25
+        score += structure_score * 0.20
 
         # 3. Question type — primary differentiator for short prompts
         question_score = self._question_complexity(prompt)
-        score += question_score * 0.45
+        score += question_score * 0.35
 
         # 4. Domain complexity
         domain_score = self._domain_complexity(prompt)
-        score += domain_score * 0.30
+        score += domain_score * 0.25
         
         # Normalize to 0.0-1.0
         score = min(max(score, 0.0), 1.0)
@@ -101,22 +101,19 @@ class ComplexityClassifier:
     
     def _semantic_complexity(self, prompt: str) -> float:
         """
-        Estimate complexity based on semantic embedding
-        Longer prompts with more diverse vocabulary have higher complexity
+        Vocabulary richness as a proxy for semantic complexity.
+        Combines type-token ratio (lexical diversity) and average word length
+        (technical vocabulary density). No embedding model required.
         """
-        try:
-            # Generate embedding
-            embedding = get_embedder().encode(prompt)
-            
-            # Use embedding norm as a proxy for complexity
-            # (more information = higher norm)
-            norm = np.linalg.norm(embedding)
-            
-            # Normalize to 0.0-1.0 based on typical values
-            return min(norm / 30.0, 1.0)
-        except Exception as e:
-            logger.warning(f"Embedding generation failed: {e}")
+        words = re.findall(r'\b[a-zA-Z]+\b', prompt.lower())
+        if not words:
             return 0.0
+        # Type-token ratio: unique words / total words (0.0–1.0)
+        ttr = len(set(words)) / len(words)
+        # Average word length, normalized: 3-char avg → 0.0, 10-char avg → 1.0
+        avg_len = sum(len(w) for w in words) / len(words)
+        len_score = max(min((avg_len - 3.0) / 7.0, 1.0), 0.0)
+        return ttr * 0.5 + len_score * 0.5
     
     def _structure_complexity(self, prompt: str) -> float:
         """
@@ -155,36 +152,35 @@ class ComplexityClassifier:
     
     def _question_complexity(self, prompt: str) -> float:
         """
-        Estimate complexity based on question type
-        Analytical questions are more complex than factual ones
+        Estimate complexity based on question type.
+        Tiers are mutually exclusive — the highest matching tier wins.
         """
-        score = 0.0
-        
-        # Simple factual questions
-        factual_patterns = [
-            r'\b(what|who|when|where|which)\b',
-            r'\b(calculate|compute|count)\b',
-        ]
-        if any(re.search(pattern, prompt, re.IGNORECASE) for pattern in factual_patterns):
-            score += 0.2
-        
-        # Analytical questions
-        analytical_patterns = [
-            r'\b(why|how|explain|analyze|evaluate|compare)\b',
-            r'\b(relationship|difference|impact|effect)\b',
-        ]
-        if any(re.search(pattern, prompt, re.IGNORECASE) for pattern in analytical_patterns):
-            score += 0.5
-        
-        # Complex reasoning and implementation/creation tasks
+        # Complex reasoning and implementation/creation tasks (highest tier)
         complex_patterns = [
             r'\b(optimize|design|architect|implement|write|code|create|build|derive|prove|debug|refactor)\b',
             r'\b(trade-off|constraint|requirement)\b',
         ]
-        if any(re.search(pattern, prompt, re.IGNORECASE) for pattern in complex_patterns):
-            score += 0.8
-        
-        return min(score, 1.0)
+        if any(re.search(p, prompt, re.IGNORECASE) for p in complex_patterns):
+            return 0.8
+
+        # Analytical questions (middle tier)
+        analytical_patterns = [
+            r'\b(why|how|explain|analyze|evaluate|compare)\b',
+            r'\b(relationship|difference|impact|effect)\b',
+        ]
+        if any(re.search(p, prompt, re.IGNORECASE) for p in analytical_patterns):
+            return 0.5
+
+        # Simple factual questions (lowest tier)
+        factual_patterns = [
+            r'\b(what|who|when|where|which)\b',
+            r'\b(calculate|compute|count)\b',
+        ]
+        if any(re.search(p, prompt, re.IGNORECASE) for p in factual_patterns):
+            return 0.2
+
+        # No match — open-ended prompt, mid-low complexity
+        return 0.3
     
     def _domain_complexity(self, prompt: str) -> float:
         """
@@ -251,9 +247,18 @@ class ComplexityClassifier:
             "model": model,
             "provider": provider,
             "reasoning": reasoning,
-            "confidence": 0.8  # Fixed confidence for now
+            "confidence": self._routing_confidence(score)
         }
     
+    def _routing_confidence(self, score: float) -> float:
+        """
+        Confidence that the score landed in the correct routing band.
+        Scores near a tier boundary are less certain; scores deep in a band are more certain.
+        """
+        thresholds = [0.20, 0.35, 0.50, 0.70]
+        min_dist = min(abs(score - t) for t in thresholds)
+        return round(min(0.5 + min_dist * 3.0, 0.95), 2)
+
     def _generate_reasoning(self, score: float, model: str) -> str:
         """Generate human-readable reasoning for routing decision"""
         if score < 0.2:
