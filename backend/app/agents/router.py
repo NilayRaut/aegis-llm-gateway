@@ -15,6 +15,14 @@ from app.services.llm_client import llm_client
 
 logger = logging.getLogger(__name__)
 
+# Injected into every LLM call so models acknowledge uncertainty about
+# unverifiable research claims rather than fabricating confident details.
+_EPISTEMIC_PROMPT = (
+    "You are a helpful, accurate assistant. "
+    "When asked about specific research studies, named researchers, or statistics "
+    "that you cannot verify, explicitly say so rather than providing unverified details."
+)
+
 
 class RouterState(TypedDict):
     """State for the routing agent"""
@@ -159,11 +167,11 @@ class RouterAgent:
         logger.info(f"Calling LLM: {state['model']}")
         
         # Build messages once — reused for primary call and any fallback
-        messages = []
+        messages = [{"role": "system", "content": _EPISTEMIC_PROMPT}]
         if state.get("context"):
             messages.append({
                 "role": "system",
-                "content": f"Use the following context to answer: {state['context']}"
+                "content": f"Additional context: {state['context']}"
             })
         messages.append({
             "role": "user",

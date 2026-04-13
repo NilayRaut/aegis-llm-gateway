@@ -74,6 +74,16 @@ HEDGING_PHRASES: list[str] = [
     "do not have access",
     "please note",
     "real-time",
+    # Epistemic uncertainty — model acknowledging it can't find/verify something
+    "cannot find",
+    "cannot verify",
+    "cannot confirm",
+    "no record of",
+    "no evidence of",
+    "not aware of",
+    "i'm not aware",
+    "i cannot find",
+    "i cannot verify",
 ]
 
 
@@ -281,6 +291,10 @@ class HallucinationDetector:
             "according to", "what was", "where did",
             "what time", "current time", "right now", "currently", "today",
             "what date", "what day", "this week", "this year",
+            # Named-researcher / named-study triggers (catches fabricated citations)
+            " dr.", "prof.", "professor ",
+            "study by", "research by", "paper by", "findings of",
+            "conducted by", "published by",
         ])
         run_tier3 = (
             domain in ("legal", "medical", "financial")
