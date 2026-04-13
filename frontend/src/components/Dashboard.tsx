@@ -1,6 +1,6 @@
 import { TrendingDown, Clock, Shield, BarChart3, Zap } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts'
 import { DashboardStats, HistoryItem, MODEL_COLORS } from '../types'
@@ -33,11 +33,25 @@ const TooltipStyle = {
 }
 
 export function Dashboard({ stats, history }: Props) {
-  // ── Chart A: Model Distribution ───────────────────────────────────────────
-  const modelDist = stats?.model_distribution ?? {}
-  const modelChartData = Object.entries(modelDist)
-    .filter(([, cnt]) => cnt > 0)
-    .map(([model, count]) => ({ model: shortModel(model), fullModel: model, count }))
+  // ── Chart A: Model Distribution (requests% vs cost%) ─────────────────────
+  // Compute per-model totals from history (same dataset, so pcts are consistent).
+  // shortModel() merges llama3.1 and llama-3.1-8b-instant → "Llama".
+  const modelTotals: Record<string, { count: number; cost: number }> = {}
+  history.forEach((item) => {
+    const label = shortModel(item.response.model_used)
+    if (!modelTotals[label]) modelTotals[label] = { count: 0, cost: 0 }
+    modelTotals[label].count += 1
+    modelTotals[label].cost += item.response.cost
+  })
+  const totalHist = history.length
+  const totalCost = Object.values(modelTotals).reduce((s, { cost }) => s + cost, 0)
+  const modelChartData = Object.entries(modelTotals)
+    .filter(([, { count }]) => count > 0)
+    .map(([model, { count, cost }]) => ({
+      model,
+      requestPct: totalHist > 0 ? Math.round((count / totalHist) * 100) : 0,
+      costPct: totalCost > 0 ? Math.round((cost / totalCost) * 100) : 0,
+    }))
 
   // ── Chart B: Cost Over Time (cumulative savings) ───────────────────────────
   const GPT4O_BASELINE = 0.0025
@@ -118,23 +132,22 @@ export function Dashboard({ stats, history }: Props) {
         </div>
       </div>
 
-      {/* ── Chart A: Model Distribution ───────────────────────────────── */}
+      {/* ── Chart A: Model Distribution (requests % vs cost %) ───────── */}
       <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-5">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Model Distribution</h3>
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Model Distribution</h3>
+        <p className="text-xs text-slate-600 mb-3">% of requests vs % of cost — cheap models should handle volume at near-zero cost</p>
         {modelChartData.length === 0 ? (
           <p className="text-xs text-slate-600 text-center py-8">No data yet</p>
         ) : (
-          <div style={{ height: 180 }}>
+          <div style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={modelChartData} margin={{ top: 4, right: 8, bottom: 36, left: -16 }}>
                 <XAxis dataKey="model" tick={{ fontSize: 10, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} allowDecimals={false} />
-                <Tooltip {...TooltipStyle} formatter={(v: number) => [v, 'Requests']} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {modelChartData.map((entry) => (
-                    <Cell key={entry.fullModel} fill={MODEL_COLORS[entry.fullModel] ?? '#6b7280'} />
-                  ))}
-                </Bar>
+                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} unit="%" domain={[0, 100]} />
+                <Tooltip {...TooltipStyle} formatter={(v: number, name: string) => [`${v}%`, name]} />
+                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} />
+                <Bar dataKey="requestPct" name="Requests %" fill="#10b981" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="costPct"    name="Cost %"     fill="#ef4444" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

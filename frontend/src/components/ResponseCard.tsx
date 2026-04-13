@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle, Shield, Cpu, Globe, Activity } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { LLMResponse, MODEL_COLORS } from '../types'
 
 interface Props {
@@ -45,8 +46,8 @@ export function ResponseCard({ response }: Props) {
       {/* Response text */}
       <div className="px-5 pt-5 pb-4">
         <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Response</h2>
-        <div className="bg-slate-900/60 rounded-lg p-4 text-slate-200 font-mono text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
-          {response.response}
+        <div className="prose prose-invert prose-sm max-w-none bg-slate-900/60 rounded-lg p-4 max-h-64 overflow-y-auto text-slate-200">
+          <ReactMarkdown>{response.response}</ReactMarkdown>
         </div>
       </div>
 
