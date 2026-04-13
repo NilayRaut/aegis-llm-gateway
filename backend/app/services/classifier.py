@@ -12,6 +12,9 @@ from app.services.embedder import get_embedder
 
 logger = logging.getLogger(__name__)
 
+# Prototype embeddings cached at module level — computed once on first classify() call
+_PROTOTYPE_EMBEDDINGS: 'dict | None' = None
+
 
 class ComplexityClassifier:
     """
@@ -26,33 +29,35 @@ class ComplexityClassifier:
     
     # Routing thresholds: (min_score, max_score) -> model
     ROUTING_TABLE = {
-        (0.0, 0.2): ("llama-3.1-8b-instant", "groq"),
-        (0.2, 0.4): ("gemini-1.5-flash", "google"),
-        (0.4, 0.6): ("gpt-4o-mini", "openai"),
-        (0.6, 0.8): ("claude-haiku-3-5-sonnet-20241022", "anthropic"),
-        (0.8, 1.0): ("gpt-4o", "openai"),
+        (0.0,  0.20): ("llama-3.1-8b-instant", "groq"),
+        (0.20, 0.35): ("gemini-1.5-flash", "google"),
+        (0.35, 0.50): ("gpt-4o-mini", "openai"),
+        (0.50, 0.70): ("claude-haiku-3-5-sonnet-20241022", "anthropic"),
+        (0.70, 1.00): ("gpt-4o", "openai"),
     }
     
-    # Domain keywords that increase complexity
-    DOMAIN_KEYWORDS = {
+    # Domain prototype sentences for semantic similarity matching.
+    # Each list represents the "centre" of that domain's semantic space.
+    # Cosine similarity against these replaces brittle keyword lists.
+    DOMAIN_PROTOTYPES = {
+        'technical': [
+            "software architecture, algorithms, data structures, system design",
+            "programming, code implementation, API design, database schema",
+            "distributed systems, microservices, event sourcing, CQRS, Kubernetes",
+            "machine learning, neural networks, model training, optimization",
+        ],
         'legal': [
-            'contract', 'lawsuit', 'liability', 'jurisdiction', 'statute',
-            'regulation', 'compliance', 'litigation', 'plaintiff', 'defendant',
-            'legal', 'law', 'rights', 'obligation', 'penalty', 'fine',
+            "laws, regulations, contracts, compliance, legal liability",
+            "court cases, lawsuits, attorneys, jurisdiction, statute",
+            "GDPR, data protection, privacy regulation, right to erasure",
         ],
         'medical': [
-            'diagnosis', 'treatment', 'symptom', 'pathology', 'medication',
-            'clinical', 'therapy', 'disease', 'patient', 'prognosis'
+            "disease, diagnosis, treatment, medication, clinical symptoms",
+            "patient health, medical procedure, therapy, prognosis",
         ],
         'financial': [
-            'investment', 'portfolio', 'derivative', 'hedge', 'arbitrage',
-            'fiscal', 'monetary', 'inflation', 'recession', 'valuation'
-        ],
-        'technical': [
-            'algorithm', 'implementation', 'architecture', 'optimization',
-            'debug', 'refactor', 'scalability', 'latency', 'throughput',
-            'python', 'javascript', 'java', 'function', 'array', 'sort',
-            'gradient', 'neural', 'model', 'training', 'equation', 'recursion',
+            "investment, portfolio, stocks, financial analysis, valuation",
+            "fiscal policy, monetary economics, inflation, derivatives",
         ],
     }
     
@@ -183,19 +188,29 @@ class ComplexityClassifier:
     
     def _domain_complexity(self, prompt: str) -> float:
         """
-        Estimate complexity based on domain-specific vocabulary
-        Technical/legal/medical prompts are more complex
+        Estimate domain complexity via cosine similarity to prototype sentences.
+        fastembed returns L2-normalized vectors, so similarity = dot product.
+        Returns the maximum similarity across all domains (0.0–1.0).
         """
-        score = 0.0
-        prompt_lower = prompt.lower()
-        
-        for domain, keywords in self.DOMAIN_KEYWORDS.items():
-            keyword_count = sum(1 for kw in keywords if kw in prompt_lower)
-            if keyword_count > 0:
-                # More keywords = higher complexity
-                score += min(keyword_count * 0.15, 0.5)
-        
-        return min(score, 1.0)
+        global _PROTOTYPE_EMBEDDINGS
+        try:
+            embedder = get_embedder()
+            if _PROTOTYPE_EMBEDDINGS is None:
+                _PROTOTYPE_EMBEDDINGS = {
+                    domain: embedder.encode(sentences)
+                    for domain, sentences in self.DOMAIN_PROTOTYPES.items()
+                }
+            prompt_emb = embedder.encode(prompt)   # shape (384,)
+            max_sim = 0.0
+            for protos in _PROTOTYPE_EMBEDDINGS.values():
+                sims = protos @ prompt_emb          # (N,) cosine similarities
+                domain_max = float(np.max(sims))
+                if domain_max > max_sim:
+                    max_sim = domain_max
+            return max_sim
+        except Exception as e:
+            logger.warning(f"Domain embedding similarity failed: {e}")
+            return 0.0
     
     def route(self, complexity_score: float) -> Tuple[str, str]:
         """
