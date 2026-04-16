@@ -3,8 +3,9 @@ Complexity Classifier - Scores prompt complexity and routes to appropriate model
 Uses embeddings + heuristics to determine complexity (0.0 to 1.0)
 """
 
+import random
 import re
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 import logging
 import numpy as np
 
@@ -27,14 +28,18 @@ class ComplexityClassifier:
     - Domain keywords (technical, legal, medical)
     """
     
-    # Routing thresholds: (min_score, max_score) -> model
-    ROUTING_TABLE = {
-        (0.0,  0.20): ("llama-3.1-8b-instant", "groq"),
-        (0.20, 0.35): ("gemini-1.5-flash", "google"),
-        (0.35, 0.50): ("gpt-4o-mini", "openai"),
-        (0.50, 0.70): ("claude-3-5-haiku-20241022", "anthropic"),
-        (0.70, 1.00): ("gpt-4o", "openai"),
-    }
+    # Routing table: (upper_threshold, [(primary_model, primary_provider), ...alternates])
+    # Primary is first in each pool — route() returns primary for determinism.
+    # classify_and_route() uses random.choice(pool) for live provider rotation.
+    # Bands are deliberately widened for Gemini and Claude so the common 0.20–0.65
+    # score range spreads traffic across all three non-OpenAI providers.
+    ROUTING_TABLE: List[Tuple[float, List[Tuple[str, str]]]] = [
+        (0.20, [("llama-3.1-8b-instant", "groq")]),
+        (0.45, [("gemini-1.5-flash", "google"), ("claude-3-5-haiku-20241022", "anthropic")]),
+        (0.65, [("claude-3-5-haiku-20241022", "anthropic"), ("gemini-1.5-flash", "google")]),
+        (0.80, [("gpt-4o-mini", "openai"), ("claude-3-5-haiku-20241022", "anthropic")]),
+        (1.01, [("gpt-4o", "openai")]),
+    ]
     
     # Domain prototype sentences for semantic similarity matching.
     # Each list represents the "centre" of that domain's semantic space.
@@ -210,38 +215,51 @@ class ComplexityClassifier:
     
     def route(self, complexity_score: float) -> Tuple[str, str]:
         """
-        Route to appropriate model based on complexity score
-        
+        Route to the primary model for a complexity score (deterministic).
+
+        Returns the first (primary) entry in the matching band's pool.
+        Tests and callers that need a stable result should use this method.
+        classify_and_route() applies random.choice for live provider rotation.
+
         Args:
             complexity_score: Score from 0.0 to 1.0
-            
+
         Returns:
             Tuple of (model_name, provider_name)
         """
-        for (min_score, max_score), (model, provider) in self.ROUTING_TABLE.items():
-            if min_score <= complexity_score < max_score:
+        for threshold, pool in self.ROUTING_TABLE:
+            if complexity_score < threshold:
+                model, provider = pool[0]
                 logger.info(f"Routing to {model} (complexity: {complexity_score:.3f})")
                 return model, provider
-        
-        # Default to highest tier
+
+        # Fallback — should not be reached with threshold 1.01 in table
         return "gpt-4o", "openai"
     
     def classify_and_route(self, prompt: str) -> Dict:
         """
-        Complete classification and routing in one call
-        
+        Complete classification and routing in one call, with provider rotation.
+
+        Selects randomly from the matching band's provider pool so traffic
+        distributes across all available providers — not just the primary.
+
         Args:
             prompt: The user's prompt text
-            
+
         Returns:
             Dictionary with score, model, provider, and reasoning
         """
         score = self.score(prompt)
-        model, provider = self.route(score)
-        
-        # Generate reasoning
+
+        # Find the matching band's pool and select randomly for rotation
+        model, provider = self.route(score)  # default (primary)
+        for threshold, pool in self.ROUTING_TABLE:
+            if score < threshold:
+                model, provider = random.choice(pool)
+                break
+
         reasoning = self._generate_reasoning(score, model)
-        
+
         return {
             "complexity_score": score,
             "model": model,
@@ -254,20 +272,21 @@ class ComplexityClassifier:
         """
         Confidence that the score landed in the correct routing band.
         Scores near a tier boundary are less certain; scores deep in a band are more certain.
+        Thresholds match ROUTING_TABLE upper bounds.
         """
-        thresholds = [0.20, 0.35, 0.50, 0.70]
+        thresholds = [0.20, 0.45, 0.65, 0.80]
         min_dist = min(abs(score - t) for t in thresholds)
         return round(min(0.5 + min_dist * 3.0, 0.95), 2)
 
     def _generate_reasoning(self, score: float, model: str) -> str:
         """Generate human-readable reasoning for routing decision"""
-        if score < 0.2:
+        if score < 0.20:
             return f"Simple query routed to {model} for cost efficiency"
-        elif score < 0.4:
+        elif score < 0.45:
             return f"Moderate query routed to {model} for balanced cost/quality"
-        elif score < 0.6:
+        elif score < 0.65:
             return f"Standard query routed to {model} for good quality"
-        elif score < 0.8:
+        elif score < 0.80:
             return f"Complex query routed to {model} for high quality"
         else:
             return f"Very complex query routed to {model} for best quality"

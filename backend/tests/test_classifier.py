@@ -59,7 +59,7 @@ class TestRoutingTable:
         assert model == "gemini-1.5-flash"
 
     def test_mid_score_routes_to_gpt4o_mini(self):
-        model, provider = classifier.route(0.42)  # mid of (0.35, 0.50)
+        model, provider = classifier.route(0.70)  # mid of (0.65, 0.80)
         assert provider == "openai"
         assert model == "gpt-4o-mini"
 
@@ -90,3 +90,19 @@ class TestClassifyAndRoute:
         result = classifier.classify_and_route("Explain black holes.")
         assert isinstance(result["reasoning"], str)
         assert len(result["reasoning"]) > 0
+
+    def test_provider_rotation_distributes_providers(self):
+        """
+        classify_and_route() should use random.choice from each band's pool,
+        so repeated calls on a moderate prompt hit more than one provider.
+        Run 30 trials — probability of seeing only 1 provider from a 2-entry
+        pool is (0.5)^29 ≈ 0.000000002, effectively zero.
+        """
+        prompt = "Explain the difference between supervised and unsupervised learning."
+        providers_seen = set()
+        for _ in range(30):
+            result = classifier.classify_and_route(prompt)
+            providers_seen.add(result["provider"])
+        assert len(providers_seen) >= 2, (
+            f"Expected rotation across ≥2 providers, got: {providers_seen}"
+        )
