@@ -45,8 +45,8 @@ export function ResponseCard({ response }: Props) {
     <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 overflow-hidden">
       {/* Response text */}
       <div className="px-5 pt-5 pb-4">
-        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Response</h2>
-        <div className="prose prose-invert prose-sm max-w-none bg-slate-900/60 rounded-lg p-4 max-h-64 overflow-y-auto text-slate-200">
+        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Model Response</h2>
+        <div className="prose prose-invert prose-sm max-w-none bg-slate-900/60 rounded-lg p-4 text-slate-200">
           <ReactMarkdown>{response.response}</ReactMarkdown>
         </div>
       </div>
@@ -79,16 +79,16 @@ export function ResponseCard({ response }: Props) {
 
         {/* Cache */}
         <div className="bg-slate-900/50 rounded-lg p-3">
-          <p className="text-xs text-slate-500 mb-1">Cache</p>
+          <p className="text-xs text-slate-500 mb-1">Deduplication</p>
           <p className={`text-sm font-medium ${response.routing_decision.cache_hit ? 'text-emerald-400' : 'text-slate-400'}`}>
-            {response.routing_decision.cache_hit ? '⚡ Hit ($0.00)' : 'Miss'}
+            {response.routing_decision.cache_hit ? '⚡ Saved ($0.00)' : 'Miss'}
           </p>
         </div>
 
         {/* Complexity Score — full width */}
         <div className="bg-slate-900/50 rounded-lg p-3 col-span-2">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-slate-500">Complexity Score</p>
+            <p className="text-xs text-slate-500">Routing Confidence Score</p>
             <span className="text-xs text-slate-400">{complexityLabel(complexity)} — {complexity.toFixed(2)}</span>
           </div>
           <div className="w-full bg-slate-700/60 rounded-full h-1.5">
@@ -131,7 +131,7 @@ export function ResponseCard({ response }: Props) {
       {/* Routing reason */}
       <div className="px-5 pb-4">
         <div className="bg-slate-900/40 rounded-lg px-3 py-2.5">
-          <p className="text-xs text-slate-500 mb-0.5">Routing Decision</p>
+          <p className="text-xs text-slate-500 mb-0.5">Routing Rationale</p>
           <p className="text-xs text-slate-300">{response.routing_decision.reason}</p>
         </div>
       </div>
@@ -152,8 +152,8 @@ export function ResponseCard({ response }: Props) {
               )}
               <span className="text-sm font-medium text-white">
                 {response.causal_analysis.is_hallucination
-                  ? 'Potential Hallucination Detected'
-                  : 'Response Verified'}
+                  ? 'Reliability Flag — Review Recommended'
+                  : 'Reliability Verified'}
               </span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">{response.causal_analysis.explanation}</p>

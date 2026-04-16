@@ -52,7 +52,7 @@ export const MODEL_COLORS: Record<string, string> = {
   'llama3.1':             '#10b981',
   'gemini-1.5-flash':     '#3b82f6',
   'gpt-4o-mini':          '#8b5cf6',
-  'claude-haiku-3-5-sonnet-20241022': '#f59e0b',
+  'claude-3-5-haiku-20241022': '#f59e0b',
   'gpt-4o':               '#ef4444',
 }
 
