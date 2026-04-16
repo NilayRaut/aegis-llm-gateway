@@ -4,6 +4,9 @@
 
 Aegis is a production LLM gateway that routes every prompt to the cheapest capable model, detects hallucinations without requiring ground truth, and surfaces every architectural decision in a live dashboard.
 
+**Live demo:** https://aegis-llm-gateway.vercel.app  
+**Backend API:** https://aegis-llm-gateway.onrender.com/docs
+
 ---
 
 ## Problem Statement
@@ -50,6 +53,7 @@ Incoming Prompt
 [2] Semantic Cache (cosine similarity ≥ 0.85 → return cached, $0.00)
       |  cache miss ↓
 [3] Complexity Classifier → Route to cheapest capable model
+      |  Provider rotation: random.choice(pool) across primary + alternate providers per tier
       |
 [4] LLM Call (unified async client, 3-retry with exponential backoff)
       |  fallback to gpt-4o-mini if primary provider unavailable
@@ -57,9 +61,9 @@ Incoming Prompt
 [3.5] Causal Risk Check
       |  — Tier 1: Hedging phrase scan [FREE, all providers, all requests]
       |  — Tier 3: Paraphrase variance vs θ=0.35
-      |             [gated: legal/medical/financial OR complexity > 0.7]
+      |             [gated: legal/medical/financial OR complexity > 0.6]
       |
-[5] Log to SQLite (cost, model, latency, risk_level, cache_hit, domain)
+[5] Log to SQLite (cost, model, provider, latency, risk_level, cache_hit, domain)
       |
 Response + causal_analysis { is_hallucination, confidence, explanation, pathway }
 ```
@@ -82,17 +86,19 @@ Refutation tests: placebo_treatment, random_common_cause
 
 ## Model Pool
 
-| Score Range | Model | Cost per 1M Tokens | Use Case |
-|-------------|-------|--------------------|----------|
-| 0.00–0.20 | Llama 3.1 8B (Groq / local Ollama) | $0.00 | Simple factual, conversational |
-| 0.20–0.35 | Gemini 1.5 Flash | $0.075 | Low-medium complexity |
-| 0.35–0.50 | GPT-4o-mini | $0.150 | Medium complexity |
-| 0.50–0.70 | Claude 3.5 Haiku | $0.250 | Medium-high, nuanced reasoning |
-| 0.70–1.00 | GPT-4o | $2.500 | Complex reasoning, high-stakes domains |
+| Score Range | Primary Model | Alternate | Cost per 1M Tokens |
+|-------------|---------------|-----------|-------------------|
+| 0.00–0.20 | Llama 3.1 8B (Groq) | — | $0.00 |
+| 0.20–0.45 | Gemini 1.5 Flash | Claude 3.5 Haiku | $0.075 |
+| 0.45–0.65 | Claude 3.5 Haiku | Gemini 1.5 Flash | $0.250 |
+| 0.65–0.80 | GPT-4o-mini | Claude 3.5 Haiku | $0.150 |
+| 0.80–1.00 | GPT-4o | — | $2.500 |
 
-Routing is automatic — the complexity classifier scores each prompt (0.0–1.0) and routes to the cheapest model capable of handling it. Legal, medical, and financial queries are always hard-routed to GPT-4o regardless of complexity score.
+Routing is automatic — the complexity classifier scores each prompt (0.0–1.0) and routes to the cheapest model capable of handling it. Within each tier, **provider rotation** (`random.choice(pool)`) distributes live traffic across the primary and alternate providers, preventing OpenAI from dominating all mid-tier traffic.
 
-If the primary provider is unavailable (e.g. Ollama not running), requests automatically fall back to GPT-4o-mini.
+Legal, medical, and financial queries are always hard-routed to GPT-4o regardless of complexity score.
+
+Local Ollama (llama3.1) overrides Groq for the lowest tier if `OLLAMA_BASE_URL` is reachable — $0.00 cost, fully local.
 
 ---
 
@@ -100,11 +106,13 @@ If the primary provider is unavailable (e.g. Ollama not running), requests autom
 
 Live stats updated after every request:
 
-- Cumulative cost savings vs. GPT-4o-only baseline
-- Model distribution across routing tiers
-- Semantic cache hit rate
-- Risk flags (MEDIUM + HIGH risk responses, including hallucination detections)
-- Average latency (cache hits excluded)
+**Live Routing Trace** — decision audit for the most recent request: routing confidence %, complexity band, optimal model with selection rationale, deduplication (cache hit/miss), response reliability score (PASS/FLAG + confidence %), actual cost vs GPT-4o baseline, per-query savings %.
+
+**Provider Health Board** — real-time status for all five providers (OpenAI, Anthropic, Google, Groq, Ollama): active/unconfigured, average latency, and query count from the current session.
+
+**Savings Accumulator** — cumulative cost efficiency across all routed requests: total queries, deduplication rate, total saved vs GPT-4o-only baseline, savings %, reliability incident count, avg latency.
+
+**Charts** — model distribution (request volume vs cost share), cumulative savings over time (area chart), avg latency by model (bar chart), reliability distribution by tier (donut).
 
 Dashboard pre-seeded with 50 realistic demo requests on first startup — real data is visible immediately before any prompts are sent.
 
@@ -116,8 +124,9 @@ Dashboard pre-seeded with 50 realistic demo requests on first startup — real d
 - Python 3.11+, Node.js 18+
 - OpenAI API key (required — GPT-4o-mini + GPT-4o)
 - Anthropic API key (Claude 3.5 Haiku)
-- Google API key (Gemini Flash)
-- Ollama with `llama3.1` pulled locally (optional — falls back to GPT-4o-mini automatically)
+- Google API key (Gemini 1.5 Flash)
+- Groq API key (Llama 3.1 8B — free tier available)
+- Ollama with `llama3.1` pulled locally (optional — falls back to Groq automatically)
 
 ### Backend
 ```bash
@@ -145,7 +154,7 @@ npm run dev
 ```bash
 cd backend
 pytest tests/ -v
-# 53 tests, ~8s, no real API calls made
+# 54 tests, ~8s, no real API calls made
 ```
 
 ---
@@ -163,21 +172,27 @@ score = (
     0.35 * question_type_score(verbs)      +  # factual vs analytical vs design (exclusive tiers)
     0.25 * domain_similarity                  # cosine sim to legal/medical/financial/technical prototypes
 )
+```
 
-routing_table = {
-    (0.00, 0.20): "llama-3.1-8b-instant",  # free, local (Groq or Ollama)
-    (0.20, 0.35): "gemini-1.5-flash",
-    (0.35, 0.50): "gpt-4o-mini",
-    (0.50, 0.70): "claude-3-5-haiku-20241022",
-    (0.70, 1.00): "gpt-4o",
-}
+Routing table (list-of-pools with provider rotation):
+
+```python
+ROUTING_TABLE = [
+    (0.20, [("llama-3.1-8b-instant", "groq")]),
+    (0.45, [("gemini-1.5-flash", "google"), ("claude-3-5-haiku-20241022", "anthropic")]),
+    (0.65, [("claude-3-5-haiku-20241022", "anthropic"), ("gemini-1.5-flash", "google")]),
+    (0.80, [("gpt-4o-mini", "openai"), ("claude-3-5-haiku-20241022", "anthropic")]),
+    (1.01, [("gpt-4o", "openai")]),
+]
+# route()             → returns pool[0] (deterministic, used in tests)
+# classify_and_route() → random.choice(pool) (live rotation for real traffic)
 ```
 
 Question type tiers are mutually exclusive — the highest matching tier wins (complex > analytical > factual). Routing confidence is computed from distance to the nearest tier boundary: scores near boundaries return lower confidence than scores deep in a band.
 
 ### Semantic Cache
 
-In-memory cache using `sentence-transformers/all-MiniLM-L6-v2`. Threshold 0.85 (not 0.95 — that gives <1% hit rate in practice). Cache hit returns in ~5ms at $0.00. Resets on server restart (intentional for demo).
+In-memory cache using `sentence-transformers/all-MiniLM-L6-v2` (via fastembed ONNX). Threshold 0.85 (not 0.95 — that gives <1% hit rate in practice). Cache hit returns in ~5ms at $0.00. Resets on server restart (intentional for demo).
 
 The same embedder instance is shared between the cache and hallucination detector to avoid loading the model twice (~90MB).
 
@@ -192,7 +207,7 @@ Three-gate check before any routing:
 
 **Tier 1 — Hedging phrase detection (free, runs on all responses)**
 
-Scans response for confidence-undermining phrases: `"I'm not sure"`, `"I believe"`, `"might be"`, `"as of my knowledge cutoff"`, etc. Three or more hits → flagged as potential hallucination (MEDIUM risk).
+Scans response for confidence-undermining phrases: `"I'm not sure"`, `"I believe"`, `"might be"`, `"as of my knowledge cutoff"`, etc. Three or more hits → flagged as potential hallucination (MEDIUM risk). Epistemic opener phrases (`"I think"`, `"it seems"`) count as 1-hit triggers regardless of quantity.
 
 **Tier 3 — Paraphrase variance (gated)**
 
@@ -229,6 +244,18 @@ See `notebooks/causal_benchmark.ipynb` for the full calibration. The key claim:
 
 ---
 
+## API Reference
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat` | POST | Full pipeline: security → cache → route → hallucination check → log → respond |
+| `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
+| `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
+| `/api/history` | GET | Last N request records from SQLite |
+| `/health` | GET | Backend health check |
+
+---
+
 ## Project Structure
 
 ```
@@ -236,39 +263,43 @@ aegis-project/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── routes.py                   # /api/chat and /api/stats
+│   │   │   └── routes.py                   # /api/chat, /api/stats, /api/provider-health
 │   │   ├── agents/
 │   │   │   └── router.py                   # LangGraph 4-node routing agent
 │   │   ├── models/
 │   │   │   └── schemas.py                  # Pydantic request/response models
 │   │   ├── services/
 │   │   │   ├── llm_client.py               # Unified async client (5 providers)
-│   │   │   ├── classifier.py               # 4-factor complexity scorer
+│   │   │   ├── classifier.py               # 4-factor complexity scorer + provider rotation
 │   │   │   ├── security.py                 # PII + injection + domain gate
 │   │   │   ├── domain_classifier.py        # legal/medical/financial detection
-│   │   │   ├── embedder.py                 # Shared all-MiniLM-L6-v2 singleton
+│   │   │   ├── embedder.py                 # Shared all-MiniLM-L6-v2 singleton (fastembed ONNX)
 │   │   │   ├── cache.py                    # In-memory semantic cache (cosine ≥ 0.85)
 │   │   │   └── hallucination_detector.py   # Tier 1 hedging + Tier 3 paraphrase variance
-│   │   ├── db.py                           # SQLite async wrapper
+│   │   ├── db.py                           # SQLite async wrapper + provider stats query
 │   │   └── seed_data.py                    # 50 demo records on first startup
 │   ├── tests/
 │   │   ├── conftest.py                     # Isolated DB fixture, mocked seeding
 │   │   ├── test_security.py                # 11 tests
-│   │   ├── test_classifier.py              # 12 tests
+│   │   ├── test_classifier.py              # 13 tests (includes provider rotation test)
 │   │   ├── test_cache.py                   # 6 tests
 │   │   ├── test_hallucination.py           # 12 tests
-│   │   └── test_routes.py                  # 12 tests — 53 total, ~8s
+│   │   └── test_routes.py                  # 12 tests — 54 total, ~8s
 │   ├── main.py
+│   ├── render.yaml                         # Render deployment config (all 5 provider API keys)
 │   ├── pytest.ini
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── App.tsx                         # State + fetch logic only (~97 lines)
-│       ├── types.ts                        # Shared TypeScript interfaces
+│       ├── App.tsx                         # State + fetch logic, locked viewport layout
+│       ├── types.ts                        # Shared TypeScript interfaces + MODEL_COLORS
 │       └── components/
-│           ├── PromptInput.tsx             # Textarea, demo buttons, submit
-│           ├── ResponseCard.tsx            # Response text, routing info, causal analysis card
-│           └── Dashboard.tsx              # Stats grid, model distribution, How It Works
+│           ├── PromptInput.tsx             # Compact textarea bar, Enter-to-submit, demo chips
+│           ├── ResponseCard.tsx            # Response text + routing/causal analysis cards
+│           ├── RoutingFlow.tsx             # Decision Pipeline visual (4-step trace)
+│           ├── HistoryPanel.tsx            # Collapsible sidebar, scrollable, with model/domain badges
+│           └── Dashboard.tsx              # Live Routing Trace, Provider Health Board,
+│                                          # Savings Accumulator, 4 Recharts visualizations
 ├── notebooks/
 │   └── causal_benchmark.ipynb             # DoWhy offline calibration + Pearl Ladder benchmark
 └── README.md
@@ -278,10 +309,14 @@ aegis-project/
 
 ## Deployment
 
-| Component | Platform |
-|-----------|----------|
-| Backend (FastAPI + SQLite) | Railway |
-| Frontend (React + Vite) | Vercel |
+| Component | Platform | Notes |
+|-----------|----------|-------|
+| Backend (FastAPI + SQLite) | Render | `render.yaml` configures all 5 provider API keys |
+| Frontend (React + Vite) | Vercel | Auto-deploys from main branch |
+
+Required environment variables on Render: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `ALLOWED_ORIGINS`.
+
+SQLite database is ephemeral on Render — reseeded with 50 demo records on each deploy. fastembed model cache is written to `/tmp/fastembed_cache/` on first request (~15s cold start).
 
 ---
 
