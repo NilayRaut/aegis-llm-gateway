@@ -165,3 +165,34 @@ async def get_stats() -> dict:
         }
 
     return await asyncio.to_thread(_query)
+
+
+async def get_provider_stats() -> list[dict]:
+    """
+    Per-provider aggregates for the Provider Health Board panel.
+
+    Returns one row per provider that has been used, with total queries,
+    average latency (excluding cache hits), and the timestamp of the most
+    recent request.  Providers with no recorded requests are omitted here;
+    the API layer merges in defaults for unconfigured ones.
+    """
+    def _query():
+        conn = _get_conn()
+        rows = conn.execute(
+            """
+            SELECT
+                provider,
+                COUNT(*)                        AS total_queries,
+                COALESCE(AVG(latency_ms), 0)    AS avg_latency_ms,
+                MAX(timestamp)                  AS last_seen
+            FROM requests
+            WHERE provider != ''
+              AND cache_hit  = 0
+            GROUP BY provider
+            ORDER BY total_queries DESC
+            """
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    return await asyncio.to_thread(_query)

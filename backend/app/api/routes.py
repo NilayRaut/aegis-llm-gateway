@@ -207,6 +207,40 @@ async def history(limit: int = 50):
     return await db.get_recent_requests(limit=min(limit, 100))
 
 
+@router.get("/provider-health")
+async def get_provider_health():
+    """
+    Live provider health board — per-provider query counts, average latency,
+    and last-seen timestamp.  All five providers are always returned;
+    those with no recorded requests show status 'unconfigured'.
+    """
+    rows = await db.get_provider_stats()
+    recorded = {r["provider"]: r for r in rows}
+
+    # All providers Aegis can route to
+    all_providers = ["openai", "anthropic", "google", "groq", "ollama"]
+    result = []
+    for provider in all_providers:
+        if provider in recorded:
+            r = recorded[provider]
+            result.append({
+                "provider": provider,
+                "status": "active",
+                "total_queries": r["total_queries"],
+                "avg_latency_ms": round(r["avg_latency_ms"]),
+                "last_seen": r["last_seen"],
+            })
+        else:
+            result.append({
+                "provider": provider,
+                "status": "unconfigured",
+                "total_queries": 0,
+                "avg_latency_ms": 0,
+                "last_seen": None,
+            })
+    return result
+
+
 @router.get("/stats", response_model=DashboardStats)
 async def get_stats():
     """

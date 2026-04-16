@@ -46,6 +46,14 @@ export interface StoredHistory {
   requests: HistoryItem[]
 }
 
+export interface ProviderHealth {
+  provider: string
+  status: 'active' | 'unconfigured'
+  total_queries: number
+  avg_latency_ms: number
+  last_seen: string | null
+}
+
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow
 export const MODEL_COLORS: Record<string, string> = {
   'llama-3.1-8b-instant': '#10b981',
