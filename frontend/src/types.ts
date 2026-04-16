@@ -56,12 +56,12 @@ export interface ProviderHealth {
 
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow
 export const MODEL_COLORS: Record<string, string> = {
-  'llama-3.1-8b-instant':     '#10b981',
-  'llama3.1':                 '#10b981',
-  'gemini-1.5-flash':         '#3b82f6',
-  'gpt-4o-mini':              '#8b5cf6',
-  'claude-3-5-haiku-20241022':'#f59e0b',
-  'gpt-4o':                   '#ef4444',
+  'llama-3.1-8b-instant': '#10b981',
+  'llama3.1':             '#10b981',
+  'gemini-1.5-flash':     '#3b82f6',
+  'gpt-4o-mini':          '#8b5cf6',
+  'claude-3-5-haiku-20241022': '#f59e0b',
+  'gpt-4o':               '#ef4444',
 }
 
 export const DEMO_PROMPTS = [

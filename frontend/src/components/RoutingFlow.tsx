@@ -110,8 +110,16 @@ export function RoutingFlow({ response }: Props) {
   const steps = buildSteps(response)
 
   return (
-    <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-5">
-      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Routing Pipeline</h3>
+    <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Decision Pipeline</h3>
+        {!response && (
+          <span className="text-[10px] text-slate-600">Awaiting request</span>
+        )}
+      </div>
+      <p className="text-[10px] text-slate-600 mb-3">
+        Live trace of security, deduplication, complexity routing, and reliability verification stages.
+      </p>
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
         {steps.map((step, i) => (
           <div key={step.label} className="flex items-center gap-1">
@@ -134,9 +142,6 @@ export function RoutingFlow({ response }: Props) {
           </div>
         ))}
       </div>
-      {!response && (
-        <p className="text-xs text-slate-600 mt-3">Send a prompt to see the routing pipeline.</p>
-      )}
     </div>
   )
 }

@@ -132,8 +132,19 @@ function App() {
         </div>
       </header>
 
+      {/* ── Page description ─────────────────────────────────────────── */}
+      <div className="border-b border-white/5 bg-slate-900/40">
+        <div className="max-w-[1600px] mx-auto px-4 py-2">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Aegis routes each request to the lowest-cost capable model using complexity scoring,
+            applies semantic deduplication caching, and runs multi-tier reliability verification
+            on every response.
+          </p>
+        </div>
+      </div>
+
       {/* ── 3-Panel Layout ───────────────────────────────────────────── */}
-      <div className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-4 flex gap-4" style={{ minHeight: 'calc(100vh - 56px)' }}>
+      <div className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 88px)' }}>
 
         {/* Panel 1: History sidebar */}
         <HistoryPanel
@@ -171,38 +182,43 @@ function App() {
           </div>
         )}
 
-        {/* Panel 2: Main interaction */}
-        <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-w-0 pr-1">
+        {/* Panel 2: Main interaction — response area top, input pinned bottom */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Scrollable response area */}
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
+            {/* Routing pipeline — always visible */}
+            <RoutingFlow response={loading ? null : response} />
+
+            {error && (
+              <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 text-sm text-red-400">
+                {error}
+              </div>
+            )}
+
+            {/* Skeleton while loading */}
+            {loading && (
+              <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 p-5 space-y-3 animate-pulse">
+                <div className="h-2.5 bg-slate-700 rounded w-1/5" />
+                <div className="h-32 bg-slate-700/50 rounded" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-14 bg-slate-700/50 rounded" />
+                  <div className="h-14 bg-slate-700/50 rounded" />
+                  <div className="h-14 bg-slate-700/50 rounded" />
+                  <div className="h-14 bg-slate-700/50 rounded" />
+                </div>
+              </div>
+            )}
+
+            {!loading && response && <ResponseCard response={response} />}
+          </div>
+
+          {/* Input bar pinned to bottom */}
           <PromptInput
             prompt={prompt}
             loading={loading}
             onPromptChange={setPrompt}
             onSubmit={handleSubmit}
           />
-
-          {error && (
-            <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 text-sm text-red-400 flex-shrink-0">
-              {error}
-            </div>
-          )}
-
-          {/* Skeleton while loading */}
-          {loading && (
-            <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 p-5 space-y-3 animate-pulse flex-shrink-0">
-              <div className="h-2.5 bg-slate-700 rounded w-1/5" />
-              <div className="h-20 bg-slate-700/50 rounded" />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="h-14 bg-slate-700/50 rounded" />
-                <div className="h-14 bg-slate-700/50 rounded" />
-                <div className="h-14 bg-slate-700/50 rounded" />
-                <div className="h-14 bg-slate-700/50 rounded" />
-              </div>
-            </div>
-          )}
-
-          {!loading && response && <ResponseCard response={response} />}
-
-          <RoutingFlow response={loading ? null : response} />
         </div>
 
         {/* Panel 3: Dashboard */}
