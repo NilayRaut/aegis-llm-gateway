@@ -105,7 +105,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       {/* ── Header ───────────────────────────────────────────────────── */}
       <header className="border-b border-white/5 bg-slate-900/70 backdrop-blur-md flex-shrink-0 z-20">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
@@ -144,7 +144,7 @@ function App() {
       </div>
 
       {/* ── 3-Panel Layout ───────────────────────────────────────────── */}
-      <div className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 88px)' }}>
+      <div className="flex-1 min-h-0 max-w-[1600px] mx-auto w-full px-4 py-4 flex gap-4 overflow-hidden">
 
         {/* Panel 1: History sidebar */}
         <HistoryPanel
