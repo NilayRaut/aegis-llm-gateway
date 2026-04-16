@@ -50,7 +50,7 @@ class LLMClient:
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
 
         # Anthropic
-        "claude-haiku-3-5-sonnet-20241022": {"input": 0.25, "output": 1.25},
+        "claude-3-5-haiku-20241022": {"input": 0.25, "output": 1.25},
 
         # Google
         "gemini-1.5-flash": {"input": 0.075, "output": 0.30},

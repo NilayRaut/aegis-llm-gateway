@@ -17,3 +17,9 @@ servers:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OLLAMA_BASE_URL
+        value: "http://localhost:11434"
