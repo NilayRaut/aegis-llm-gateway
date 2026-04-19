@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
-import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth } from './types'
+import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult } from './types'
 import { PromptInput } from './components/PromptInput'
 import { ResponseCard } from './components/ResponseCard'
 import { Dashboard } from './components/Dashboard'
@@ -33,18 +33,21 @@ function App() {
   const [error, setError] = useState('')
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([])
+  const [providerTest, setProviderTest] = useState<Record<string, ProviderTestResult>>({})
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | undefined>()
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
 
   const fetchStats = async () => {
     try {
-      const [statsRes, healthRes] = await Promise.all([
+      const [statsRes, healthRes, testRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/provider-health'),
+        fetch('/api/provider-test'),
       ])
       if (statsRes.ok) setStats(await statsRes.json())
       if (healthRes.ok) setProviderHealth(await healthRes.json())
+      if (testRes.ok) setProviderTest(await testRes.json())
     } catch {
       // non-critical
     }
@@ -222,7 +225,7 @@ function App() {
         </div>
 
         {/* Panel 3: Dashboard */}
-        <Dashboard stats={stats} history={history} providerHealth={providerHealth} />
+        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} />
       </div>
     </div>
   )

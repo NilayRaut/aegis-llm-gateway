@@ -241,6 +241,16 @@ async def get_provider_health():
     return result
 
 
+@router.get("/provider-test")
+async def get_provider_test():
+    """
+    Returns startup connectivity check results for each provider.
+    Status values: ok | not_configured | auth_error | unavailable | pending
+    """
+    from app.services.provider_checker import get_results
+    return get_results()
+
+
 @router.get("/stats", response_model=DashboardStats)
 async def get_stats():
     """

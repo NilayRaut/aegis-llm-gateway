@@ -9,6 +9,7 @@ Main FastAPI application entry point
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 import uvicorn
 import os
 import json
@@ -16,6 +17,8 @@ import json
 from app.api.routes import router
 from app.db import init_db
 from app.seed_data import seed_if_empty
+from app.services.provider_checker import check_all_providers
+from app.services.llm_client import llm_client as _llm_client
 
 app = FastAPI(
     title="Aegis - Agentic LLM Gateway",
@@ -54,6 +57,7 @@ async def startup_event():
     """Initialize database and seed demo data on first run."""
     await init_db()
     await seed_if_empty()
+    asyncio.create_task(check_all_providers(_llm_client))
 
 
 @app.get("/")

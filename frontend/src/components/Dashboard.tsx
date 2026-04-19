@@ -3,12 +3,21 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts'
-import { DashboardStats, HistoryItem, ProviderHealth, MODEL_COLORS } from '../types'
+import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, MODEL_COLORS } from '../types'
 
 interface Props {
   stats: DashboardStats | null
   history: HistoryItem[]
   providerHealth: ProviderHealth[]
+  providerTest: Record<string, ProviderTestResult>
+}
+
+const TEST_BADGE: Record<string, { label: string; cls: string }> = {
+  ok:             { label: 'LIVE',     cls: 'bg-emerald-900/60 text-emerald-400 border border-emerald-700/50' },
+  not_configured: { label: 'NO KEY',  cls: 'bg-slate-700/60 text-slate-500 border border-slate-600/40' },
+  auth_error:     { label: 'AUTH ERR', cls: 'bg-red-900/50 text-red-400 border border-red-700/50' },
+  unavailable:    { label: 'UNAVAIL', cls: 'bg-amber-900/40 text-amber-400 border border-amber-700/50' },
+  pending:        { label: '...',     cls: 'bg-slate-700/40 text-slate-500 border border-slate-600/40' },
 }
 
 // Shorten model name for chart axis labels
@@ -43,7 +52,7 @@ const TooltipStyle = {
 
 const GPT4O_BASELINE = 0.0025
 
-export function Dashboard({ stats, history, providerHealth }: Props) {
+export function Dashboard({ stats, history, providerHealth, providerTest }: Props) {
   // ── Panel A: Live Routing Trace (latest query) ─────────────────────────────
   const latest = history[0] ?? null
 
@@ -229,24 +238,33 @@ export function Dashboard({ stats, history, providerHealth }: Props) {
                 provider: p, status: 'unconfigured' as const,
                 total_queries: 0, avg_latency_ms: 0, last_seen: null,
               }))
-          ).map((ph) => (
-            <div key={ph.provider} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-3 py-2">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                ph.status === 'active' ? 'bg-emerald-400' : 'bg-slate-600'
-              }`} />
-              <span className="text-xs text-slate-300 w-20 flex-shrink-0 font-medium">
-                {PROVIDER_DISPLAY[ph.provider] ?? ph.provider}
-              </span>
-              {ph.status === 'active' ? (
-                <>
-                  <span className="text-[10px] text-slate-500 flex-1">{ph.avg_latency_ms}ms avg</span>
-                  <span className="text-[10px] text-slate-600">{ph.total_queries} req</span>
-                </>
-              ) : (
-                <span className="text-[10px] text-slate-600 flex-1">not yet used</span>
-              )}
-            </div>
-          ))}
+          ).map((ph) => {
+            const test = providerTest[ph.provider]
+            const badge = test ? (TEST_BADGE[test.status] ?? TEST_BADGE.pending) : null
+            return (
+              <div key={ph.provider} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-3 py-2">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  ph.status === 'active' ? 'bg-emerald-400' : 'bg-slate-600'
+                }`} />
+                <span className="text-xs text-slate-300 w-16 flex-shrink-0 font-medium">
+                  {PROVIDER_DISPLAY[ph.provider] ?? ph.provider}
+                </span>
+                {badge && (
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                )}
+                {ph.status === 'active' ? (
+                  <>
+                    <span className="text-[10px] text-slate-500 flex-1">{ph.avg_latency_ms}ms avg</span>
+                    <span className="text-[10px] text-slate-600">{ph.total_queries} req</span>
+                  </>
+                ) : (
+                  <span className="text-[10px] text-slate-600 flex-1">not yet used</span>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
