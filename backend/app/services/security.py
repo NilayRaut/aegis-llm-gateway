@@ -13,7 +13,7 @@ import re
 import logging
 from dataclasses import dataclass
 
-from app.services.domain_classifier import classify_domain
+from app.services.domain_classifier import classify_domain, classify_domain_async
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,9 @@ class SecurityChecker:
         self._ssn_re   = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
         self._phone_re = re.compile(r'\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b')
 
-        # Prompt injection keywords (checked as substrings on lowercased prompt)
+        # Prompt injection keywords (checked as substrings on lowercased prompt).
+        # "you are now" removed — too broad ("you are now required to" is legitimate).
+        # Replaced with specific jailbreak variants.
         self._injections: list[str] = [
             "ignore previous instructions",
             "ignore all previous",
@@ -48,7 +50,12 @@ class SecurityChecker:
             "act as if you have no restrictions",
             "forget your instructions",
             "forget all instructions",
-            "you are now",
+            "you are now dan",
+            "you are now unrestricted",
+            "you are now in developer mode",
+            "pretend you are",
+            "pretend you have no restrictions",
+            "you have no restrictions",
             "new persona",
             "bypass restrictions",
         ]
@@ -88,6 +95,49 @@ class SecurityChecker:
         domain_result = classify_domain(prompt)
         if domain_result.forced_model:
             logger.info(f"Security: domain={domain_result.domain} → forcing {domain_result.forced_model}")
+
+        return SecurityResult(
+            blocked=False,
+            reason="",
+            domain=domain_result.domain,
+            forced_model=domain_result.forced_model,
+        )
+
+
+    async def check_async(self, prompt: str) -> SecurityResult:
+        """
+        Async version of check() — uses LLM-based domain classification to
+        eliminate false positives from keyword matching. PII and injection
+        detection run synchronously (no I/O needed there).
+        """
+        # Step 1: PII detection (sync, regex only)
+        if (self._email_re.search(prompt)
+                or self._ssn_re.search(prompt)
+                or self._phone_re.search(prompt)):
+            logger.warning("Security: PII detected in prompt (not logged)")
+            return SecurityResult(
+                blocked=True,
+                reason="PII detected — please remove personal information before submitting",
+                domain="general",
+                forced_model=None,
+            )
+
+        # Step 2: Prompt injection detection (sync, substring matching)
+        p_lower = prompt.lower()
+        for keyword in self._injections:
+            if keyword in p_lower:
+                logger.warning("Security: injection attempt detected (keyword: '%s')", keyword)
+                return SecurityResult(
+                    blocked=True,
+                    reason="Injection attempt detected",
+                    domain="general",
+                    forced_model=None,
+                )
+
+        # Step 3: Domain classification — LLM-based (with keyword fallback)
+        domain_result = await classify_domain_async(prompt)
+        if domain_result.forced_model:
+            logger.info("Security: domain=%s → forcing %s", domain_result.domain, domain_result.forced_model)
 
         return SecurityResult(
             blocked=False,

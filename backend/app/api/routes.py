@@ -78,7 +78,7 @@ async def chat(request: PromptRequest):
 
     try:
         # ── Step 1: Security check ────────────────────────────────────────────
-        security_result = security_checker.check(request.prompt)
+        security_result = await security_checker.check_async(request.prompt)
 
         if security_result.blocked:
             logger.warning("Request %s blocked: %s", request_id, security_result.reason)
