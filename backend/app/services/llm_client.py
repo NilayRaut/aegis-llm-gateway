@@ -17,8 +17,15 @@ from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 from google import genai
 from google.genai import types as genai_types
-from ollama import AsyncClient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+# ollama is optional — only used for local dev. Not installed in production.
+try:
+    from ollama import AsyncClient as _OllamaAsyncClient
+    _OLLAMA_SDK = True
+except ImportError:
+    _OllamaAsyncClient = None  # type: ignore[assignment,misc]
+    _OLLAMA_SDK = False
 
 from app.utils.cost_calculator import calculate_cost
 
@@ -95,10 +102,14 @@ class LLMClient:
             self.google_client = None
             logger.warning("GOOGLE_API_KEY not found, Gemini calls will fail")
         
-        # Ollama (local)
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.ollama_client = AsyncClient(host=ollama_url)
-        logger.info(f"Ollama client initialized at {ollama_url}")
+        # Ollama (local, optional)
+        if _OLLAMA_SDK:
+            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            self.ollama_client = _OllamaAsyncClient(host=ollama_url)
+            logger.info(f"Ollama client initialized at {ollama_url}")
+        else:
+            self.ollama_client = None
+            logger.info("Ollama SDK not installed — local Ollama disabled (install 'ollama>=0.2.0' for local dev)")
 
         # Groq
         if groq_key := os.getenv("GROQ_API_KEY"):
