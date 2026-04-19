@@ -54,6 +54,11 @@ export interface ProviderHealth {
   last_seen: string | null
 }
 
+export interface ProviderTestResult {
+  status: 'ok' | 'not_configured' | 'auth_error' | 'unavailable' | 'pending'
+  latency_ms: number
+}
+
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow
 export const MODEL_COLORS: Record<string, string> = {
   'llama-3.1-8b-instant': '#10b981',

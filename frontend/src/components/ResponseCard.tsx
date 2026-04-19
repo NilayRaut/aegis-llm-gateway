@@ -58,9 +58,16 @@ export function ResponseCard({ response }: Props) {
           <p className="text-xs text-slate-500 mb-1 flex items-center gap-1.5">
             <Cpu className="w-3 h-3" /> Model
           </p>
-          <p className="font-mono text-xs font-medium truncate" style={{ color: modelColor }}>
-            {response.model_used}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-mono text-xs font-medium truncate" style={{ color: modelColor }}>
+              {response.model_used}
+            </p>
+            {response.routing_decision.reason.toLowerCase().includes('fallback') && (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700/50 flex-shrink-0">
+                FALLBACK
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Cost */}
