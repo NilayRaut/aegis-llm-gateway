@@ -112,7 +112,7 @@ class RouterAgent:
                 full_prompt = f"Context: {state['context']}\n\nQuestion: {state['prompt']}"
             
             # Classify and route
-            result = classifier.classify_and_route(full_prompt)
+            result = await classifier.classify_and_route_async(full_prompt)
             
             state["complexity_score"] = result["complexity_score"]
             state["model"] = result["model"]
