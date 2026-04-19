@@ -10,6 +10,7 @@ Tests cover:
 """
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.classifier import classifier
 
 
@@ -106,3 +107,33 @@ class TestClassifyAndRoute:
         assert len(providers_seen) >= 2, (
             f"Expected rotation across ≥2 providers, got: {providers_seen}"
         )
+
+
+class TestLLMClassifier:
+    async def test_llm_score_used_when_groq_available(self):
+        """When Groq responds, score_async returns the LLM's score."""
+        mock_resp = MagicMock()
+        mock_resp.content = "0.35"
+        with patch("app.services.classifier.llm_client") as mock_client:
+            mock_client.groq_client = MagicMock()
+            mock_client.call_groq = AsyncMock(return_value=mock_resp)
+            score = await classifier.score_async("Why does ice float?")
+        assert abs(score - 0.35) < 0.01
+
+    async def test_fallback_to_heuristic_when_groq_fails(self):
+        """When Groq raises an exception, score_async falls back to heuristic score()."""
+        with patch("app.services.classifier.llm_client") as mock_client:
+            mock_client.groq_client = MagicMock()
+            mock_client.call_groq = AsyncMock(side_effect=Exception("Groq unavailable"))
+            score = await classifier.score_async("What is 2 + 2?")
+        assert 0.0 <= score <= 1.0
+
+    async def test_llm_score_clamped_to_valid_range(self):
+        """LLM returning out-of-range value (e.g. 1.7) is clamped to 1.0."""
+        mock_resp = MagicMock()
+        mock_resp.content = "1.7"
+        with patch("app.services.classifier.llm_client") as mock_client:
+            mock_client.groq_client = MagicMock()
+            mock_client.call_groq = AsyncMock(return_value=mock_resp)
+            score = await classifier.score_async("test prompt")
+        assert score == 1.0

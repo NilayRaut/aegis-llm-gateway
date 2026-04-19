@@ -3,6 +3,7 @@ Complexity Classifier - Scores prompt complexity and routes to appropriate model
 Uses embeddings + heuristics to determine complexity (0.0 to 1.0)
 """
 
+import asyncio
 import random
 import re
 from typing import Tuple, Dict, List
@@ -10,6 +11,17 @@ import logging
 import numpy as np
 
 from app.services.embedder import get_embedder
+from app.services.llm_client import llm_client
+
+_CLASSIFIER_PROMPT = """Rate the complexity of this user prompt for LLM routing.
+Return ONLY a decimal number 0.0–1.0. No explanation, no units, nothing else.
+
+Scale:
+0.00–0.20  Trivial: basic facts, simple lookups, yes/no (capitals, dates, unit conversions)
+0.20–0.45  Simple: common how/why questions, brief explanations (Why does X? How does Y work?)
+0.45–0.65  Moderate: nuanced reasoning, comparisons, conceptual depth required
+0.65–0.80  Complex: technical design, expert knowledge, implementation details
+0.80–1.00  Expert: multi-constraint architecture, research-level, system design at scale"""
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +280,54 @@ class ComplexityClassifier:
             "confidence": self._routing_confidence(score)
         }
     
+    async def score_async(self, prompt: str) -> float:
+        """
+        LLM-based complexity scoring via Groq llama (free, ~100ms).
+        Falls back to heuristic score() on any failure or unavailability.
+        Capped at 3 seconds total (including any retry) to keep the request path fast.
+        """
+        if not llm_client.groq_client:
+            return self.score(prompt)
+        try:
+            response = await asyncio.wait_for(
+                llm_client.call_groq(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": _CLASSIFIER_PROMPT},
+                        {"role": "user", "content": f'Prompt: "{prompt}"'},
+                    ],
+                    temperature=0.0,
+                    max_tokens=5,
+                ),
+                timeout=3.0,
+            )
+            raw = response.content.strip().split()[0]
+            return max(0.0, min(1.0, float(raw)))
+        except Exception as e:
+            logger.warning("LLM classifier failed (%s), using heuristic", type(e).__name__)
+            return self.score(prompt)
+
+    async def classify_and_route_async(self, prompt: str) -> Dict:
+        """
+        Async classification and routing using LLM-based scoring with provider rotation.
+        Drop-in async replacement for classify_and_route() — same output format.
+        """
+        score = await self.score_async(prompt)
+
+        model, provider = self.route(score)  # primary (deterministic default)
+        for threshold, pool in self.ROUTING_TABLE:
+            if score < threshold:
+                model, provider = random.choice(pool)
+                break
+
+        return {
+            "complexity_score": score,
+            "model": model,
+            "provider": provider,
+            "reasoning": self._generate_reasoning(score, model),
+            "confidence": self._routing_confidence(score),
+        }
+
     def _routing_confidence(self, score: float) -> float:
         """
         Confidence that the score landed in the correct routing band.
