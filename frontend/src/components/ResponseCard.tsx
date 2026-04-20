@@ -1,6 +1,8 @@
-import { AlertTriangle, CheckCircle, Shield, Cpu, Globe, Activity } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Shield, Cpu, Globe, Activity, TrendingDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { LLMResponse, MODEL_COLORS } from '../types'
+
+const GPT4O_BASELINE = 0.0025
 
 interface Props {
   response: LLMResponse
@@ -72,8 +74,17 @@ export function ResponseCard({ response }: Props) {
 
         {/* Cost */}
         <div className="bg-slate-900/50 rounded-lg p-3">
-          <p className="text-xs text-slate-500 mb-1">Cost</p>
+          <p className="text-xs text-slate-500 mb-1 flex items-center gap-1.5">
+            <TrendingDown className="w-3 h-3" /> Cost
+          </p>
           <p className="text-white text-sm font-medium">${response.cost.toFixed(6)}</p>
+          {response.routing_decision.cache_hit ? (
+            <p className="text-[10px] text-emerald-400 mt-0.5">100% saved (cache hit)</p>
+          ) : GPT4O_BASELINE - response.cost > 0.000001 ? (
+            <p className="text-[10px] text-emerald-400 mt-0.5">
+              {Math.round(((GPT4O_BASELINE - response.cost) / GPT4O_BASELINE) * 100)}% vs GPT-4o baseline
+            </p>
+          ) : null}
         </div>
 
         {/* Latency */}

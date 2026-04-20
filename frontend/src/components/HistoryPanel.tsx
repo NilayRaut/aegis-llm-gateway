@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { History, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
+import { History, Zap, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
 import { HistoryItem, MODEL_COLORS } from '../types'
 
 interface Props {
@@ -96,10 +96,13 @@ export function HistoryPanel({ history, onSelect, selectedId }: Props) {
                       : 'bg-slate-900/40 border-transparent hover:bg-slate-700/50 hover:border-white/10'
                   }`}
                 >
-                  {/* Top row: time + risk dot + cache bolt */}
+                  {/* Top row: time + risk dot + cache bolt + hallucination flag */}
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-slate-500">{relativeTime(item.timestamp)}</span>
                     <div className="flex items-center gap-1.5">
+                      {item.response.causal_analysis?.is_hallucination && (
+                        <AlertTriangle className="w-3 h-3 text-red-400" aria-label="Hallucination flagged" />
+                      )}
                       {item.response.routing_decision.cache_hit && (
                         <Zap className="w-3 h-3 text-amber-400" aria-label="Cache hit" />
                       )}

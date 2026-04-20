@@ -167,6 +167,31 @@ def _build_seed_records() -> list[dict]:
             "cache_hit": 1,
             "risk_level": "SAFE",
             "security_blocked": 0,
+            "security_reason": "",
+        })
+        idx += 1
+
+    # Group 8: blocked security events (4 records)
+    blocked_events = [
+        ("Prompt injection detected: system override attempt", "general"),
+        ("PII detected: email address in prompt", "general"),
+        ("Prompt injection detected: ignore-instructions pattern", "general"),
+        ("Prompt injection detected: jailbreak attempt", "legal"),
+    ]
+    for reason, domain in blocked_events:
+        records.append({
+            "id": str(uuid.uuid4()),
+            "timestamp": ts(idx),
+            "model_used": "blocked",
+            "provider": "",
+            "cost_usd": 0.0,
+            "latency_ms": 0,
+            "complexity_score": 0.0,
+            "domain": domain,
+            "cache_hit": 0,
+            "risk_level": "HIGH",
+            "security_blocked": 1,
+            "security_reason": reason,
         })
         idx += 1
 
@@ -192,13 +217,18 @@ async def seed_if_empty() -> None:
             return
 
         records = _build_seed_records()
+        # Ensure all records have security_reason (older groups default to "")
+        for r in records:
+            r.setdefault("security_reason", "")
         conn.executemany(
             """INSERT OR IGNORE INTO requests
                (id, timestamp, model_used, provider, cost_usd, latency_ms,
-                complexity_score, domain, cache_hit, risk_level, security_blocked, is_seed)
+                complexity_score, domain, cache_hit, risk_level, security_blocked,
+                security_reason, is_seed)
                VALUES
                (:id, :timestamp, :model_used, :provider, :cost_usd, :latency_ms,
-                :complexity_score, :domain, :cache_hit, :risk_level, :security_blocked, 1)""",
+                :complexity_score, :domain, :cache_hit, :risk_level, :security_blocked,
+                :security_reason, 1)""",
             records,
         )
         conn.commit()

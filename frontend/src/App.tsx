@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
-import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult } from './types'
+import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent } from './types'
 import { PromptInput } from './components/PromptInput'
 import { ResponseCard } from './components/ResponseCard'
 import { Dashboard } from './components/Dashboard'
@@ -34,20 +34,23 @@ function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([])
   const [providerTest, setProviderTest] = useState<Record<string, ProviderTestResult>>({})
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([])
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | undefined>()
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
 
   const fetchStats = async () => {
     try {
-      const [statsRes, healthRes, testRes] = await Promise.all([
+      const [statsRes, healthRes, testRes, securityRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/provider-health'),
         fetch('/api/provider-test'),
+        fetch('/api/security/events'),
       ])
       if (statsRes.ok) setStats(await statsRes.json())
       if (healthRes.ok) setProviderHealth(await healthRes.json())
       if (testRes.ok) setProviderTest(await testRes.json())
+      if (securityRes.ok) setSecurityEvents(await securityRes.json())
     } catch {
       // non-critical
     }
@@ -126,8 +129,17 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-slate-500">Live</span>
+            {Object.entries(providerTest).some(([, v]) => v.status === 'auth_error') ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-xs text-amber-500">Provider key error — check dashboard</span>
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs text-slate-500">Live</span>
+              </>
+            )}
             {stats && (
               <span className="text-xs text-slate-600 ml-1">{stats.total_requests} requests</span>
             )}
@@ -225,7 +237,7 @@ function App() {
         </div>
 
         {/* Panel 3: Dashboard */}
-        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} />
+        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} />
       </div>
     </div>
   )

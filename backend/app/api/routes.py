@@ -82,6 +82,19 @@ async def chat(request: PromptRequest):
 
         if security_result.blocked:
             logger.warning("Request %s blocked: %s", request_id, security_result.reason)
+            await db.log_request(
+                id=request_id,
+                model_used="blocked",
+                provider="",
+                cost_usd=0.0,
+                latency_ms=0,
+                complexity_score=0.0,
+                domain=security_result.domain or "general",
+                cache_hit=False,
+                risk_level="HIGH",
+                security_blocked=True,
+                security_reason=security_result.reason or "Security policy violation",
+            )
             raise HTTPException(status_code=400, detail=security_result.reason)
 
         domain = security_result.domain
@@ -205,6 +218,12 @@ async def chat(request: PromptRequest):
 async def history(limit: int = 50):
     """Return recent request history for the frontend dashboard."""
     return await db.get_recent_requests(limit=min(limit, 100))
+
+
+@router.get("/security/events")
+async def security_events(limit: int = 20):
+    """Return recent security-blocked requests for the security event log."""
+    return await db.get_security_events(limit=min(limit, 50))
 
 
 @router.get("/provider-health")
