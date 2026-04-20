@@ -15,7 +15,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_S = 5
+_TIMEOUT_S = 15
 _RESULTS: dict[str, dict] = {}
 _ALL_PROVIDERS = ["openai", "anthropic", "google", "groq", "ollama"]
 
