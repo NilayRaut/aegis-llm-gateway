@@ -106,7 +106,7 @@ def _build_seed_records() -> list[dict]:
         records.append({
             "id": str(uuid.uuid4()),
             "timestamp": ts(idx),
-            "model_used": "claude-3-5-haiku-20241022",
+            "model_used": "claude-haiku-4-5-20251001",
             "provider": "anthropic",
             "cost_usd": round(random.uniform(0.000020, 0.000030), 8),
             "latency_ms": random.randint(800, 1500),

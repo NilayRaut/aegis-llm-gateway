@@ -17,6 +17,7 @@ const TEST_BADGE: Record<string, { label: string; cls: string }> = {
   ok:             { label: 'LIVE',     cls: 'bg-emerald-900/60 text-emerald-400 border border-emerald-700/50' },
   not_configured: { label: 'NO KEY',  cls: 'bg-slate-700/60 text-slate-500 border border-slate-600/40' },
   auth_error:     { label: 'AUTH ERR', cls: 'bg-red-900/50 text-red-400 border border-red-700/50' },
+  quota_exceeded: { label: 'QUOTA',   cls: 'bg-orange-900/50 text-orange-400 border border-orange-700/50' },
   unavailable:    { label: 'UNAVAIL', cls: 'bg-amber-900/40 text-amber-400 border border-amber-700/50' },
   pending:        { label: '...',     cls: 'bg-slate-700/40 text-slate-500 border border-slate-600/40' },
 }
