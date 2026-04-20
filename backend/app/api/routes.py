@@ -38,7 +38,7 @@ _DEFAULT_MODEL_DIST = {
     "llama3.1": 0,
     "gemini-2.0-flash": 0,
     "gpt-4o-mini": 0,
-    "claude-3-5-haiku-20241022": 0,
+    "claude-haiku-4-5-20251001": 0,
     "gpt-4o": 0,
 }
 

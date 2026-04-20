@@ -29,6 +29,8 @@ def _classify_error(e: BaseException, provider: str) -> str:
     logger.warning("Provider ping failed — %s: [%s] %s", provider, name, str(e)[:200])
     if "authentication" in name.lower() or "unauthorized" in msg or "api key" in msg or "invalid_api_key" in msg:
         return "auth_error"
+    if "resource_exhausted" in msg or "quota" in msg or "credits are depleted" in msg or "429" in msg:
+        return "quota_exceeded"
     return "unavailable"
 
 
@@ -61,7 +63,7 @@ async def _ping_anthropic(client) -> tuple[str, int]:
     try:
         await asyncio.wait_for(
             client.anthropic_client.messages.create(
-                model="claude-3-5-haiku-20241022",
+                model="claude-haiku-4-5-20251001",
                 messages=_PING_MSG,
                 max_tokens=3,
             ),
@@ -118,6 +120,8 @@ async def _ping_groq(client) -> tuple[str, int]:
 
 
 async def _ping_ollama(client) -> tuple[str, int]:
+    if not client.ollama_client:
+        return "not_configured", 0
     t0 = time.time()
     try:
         await asyncio.wait_for(
