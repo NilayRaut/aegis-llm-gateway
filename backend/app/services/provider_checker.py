@@ -79,7 +79,7 @@ async def _ping_google(client) -> tuple[str, int]:
     try:
         await asyncio.wait_for(
             client.google_client.aio.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.0-flash",
                 contents="ok?",
             ),
             timeout=_TIMEOUT_S,

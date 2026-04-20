@@ -36,7 +36,7 @@ router = APIRouter()
 # (so the frontend never needs to handle missing keys)
 _DEFAULT_MODEL_DIST = {
     "llama3.1": 0,
-    "gemini-1.5-flash": 0,
+    "gemini-2.0-flash": 0,
     "gpt-4o-mini": 0,
     "claude-3-5-haiku-20241022": 0,
     "gpt-4o": 0,
