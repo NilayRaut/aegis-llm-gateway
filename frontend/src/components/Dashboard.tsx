@@ -1,15 +1,16 @@
-import { TrendingDown, Shield, CheckCircle, AlertTriangle, Activity } from 'lucide-react'
+import { TrendingDown, Shield, CheckCircle, AlertTriangle, Activity, ShieldAlert } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts'
-import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, MODEL_COLORS } from '../types'
+import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, MODEL_COLORS } from '../types'
 
 interface Props {
   stats: DashboardStats | null
   history: HistoryItem[]
   providerHealth: ProviderHealth[]
   providerTest: Record<string, ProviderTestResult>
+  securityEvents: SecurityEvent[]
 }
 
 const TEST_BADGE: Record<string, { label: string; cls: string }> = {
@@ -52,7 +53,7 @@ const TooltipStyle = {
 
 const GPT4O_BASELINE = 0.0025
 
-export function Dashboard({ stats, history, providerHealth, providerTest }: Props) {
+export function Dashboard({ stats, history, providerHealth, providerTest, securityEvents }: Props) {
   // ── Panel A: Live Routing Trace (latest query) ─────────────────────────────
   const latest = history[0] ?? null
 
@@ -268,7 +269,44 @@ export function Dashboard({ stats, history, providerHealth, providerTest }: Prop
         </div>
       </div>
 
-      {/* ── C: Savings Accumulator ───────────────────────────────────────── */}
+      {/* ── C: Security Event Log ───────────────────────────────────────── */}
+      <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-4">
+        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-2">
+          <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+          Security Event Log
+          {securityEvents.length > 0 && (
+            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-red-900/50 text-red-400 border border-red-700/50">
+              {securityEvents.length} blocked
+            </span>
+          )}
+        </h2>
+        <p className="text-[10px] text-slate-600 mb-3">
+          Requests blocked by the security gate — prompt injection, PII, and policy violations.
+        </p>
+        {securityEvents.length === 0 ? (
+          <p className="text-xs text-slate-600 text-center py-4">No security events</p>
+        ) : (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {securityEvents.slice(0, 10).map((ev) => (
+              <div key={ev.id} className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-red-300 leading-relaxed truncate">
+                      {ev.security_reason}
+                    </p>
+                    <p className="text-[9px] text-slate-600 mt-0.5">
+                      {new Date(ev.timestamp + 'Z').toLocaleTimeString()} · {ev.domain}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── D: Savings Accumulator ───────────────────────────────────────── */}
       <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-4">
         <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-2">
           <TrendingDown className="w-3.5 h-3.5 text-emerald-400" />

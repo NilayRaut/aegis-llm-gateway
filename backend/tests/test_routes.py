@@ -63,12 +63,13 @@ class TestChatSecurityBlocking:
         )
         assert resp.status_code == 400
 
-    def test_blocked_request_not_logged(self, test_client):
+    def test_blocked_request_logged_as_security_event(self, test_client):
         test_client.post(
             "/api/chat", json={"prompt": "My SSN is 123-45-6789."}
         )
-        stats = test_client.get("/api/stats").json()
-        assert stats["total_requests"] == 0
+        events = test_client.get("/api/security/events").json()
+        assert len(events) == 1
+        assert events[0]["security_reason"] != ""
 
 
 class TestChatSuccess:

@@ -156,7 +156,10 @@ async def check_all_providers(client) -> None:
         else:
             status, latency = result
         _RESULTS[provider] = {"status": status, "latency_ms": latency}
-        logger.info("Provider check — %s: %s (%dms)", provider, status, latency)
+        if status in ("auth_error", "unavailable"):
+            logger.warning("Provider check — %s: %s (%dms)", provider, status, latency)
+        else:
+            logger.info("Provider check — %s: %s (%dms)", provider, status, latency)
 
 
 def get_results() -> dict:

@@ -49,9 +49,16 @@ async def init_db() -> None:
                 cache_hit         INTEGER DEFAULT 0,
                 risk_level        TEXT DEFAULT 'SAFE',
                 security_blocked  INTEGER DEFAULT 0,
+                security_reason   TEXT DEFAULT '',
                 is_seed           INTEGER DEFAULT 0
             )
         """)
+        # Migrate existing DBs that pre-date the security_reason column
+        try:
+            conn.execute("ALTER TABLE requests ADD COLUMN security_reason TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
         conn.commit()
         conn.close()
         logger.info("DB initialized at %s", DB_PATH)
@@ -70,6 +77,7 @@ async def log_request(
     cache_hit: bool,
     risk_level: str,
     security_blocked: bool,
+    security_reason: str = "",
 ) -> None:
     """Insert a request record. INSERT OR IGNORE protects against duplicate IDs."""
     def _insert():
@@ -77,8 +85,8 @@ async def log_request(
         conn.execute(
             """INSERT OR IGNORE INTO requests
                (id, model_used, provider, cost_usd, latency_ms,
-                complexity_score, domain, cache_hit, risk_level, security_blocked)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                complexity_score, domain, cache_hit, risk_level, security_blocked, security_reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 id,
                 model_used,
@@ -90,6 +98,7 @@ async def log_request(
                 int(cache_hit),
                 risk_level,
                 int(security_blocked),
+                security_reason,
             ),
         )
         conn.commit()
@@ -163,6 +172,24 @@ async def get_stats() -> dict:
             "hallucinations_caught": hallucinations,
             "model_distribution": model_dist,
         }
+
+    return await asyncio.to_thread(_query)
+
+
+async def get_security_events(limit: int = 20) -> list[dict]:
+    """Return the most recent security-blocked requests for the security event log."""
+    def _query():
+        conn = _get_conn()
+        rows = conn.execute(
+            """SELECT id, timestamp, security_reason, domain
+               FROM requests
+               WHERE security_blocked = 1
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
 
     return await asyncio.to_thread(_query)
 
