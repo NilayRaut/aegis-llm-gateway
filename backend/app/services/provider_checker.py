@@ -2,7 +2,7 @@
 Startup provider connectivity check.
 
 Runs once at startup as a fire-and-forget asyncio task. Pings each
-provider with a single short request (max_tokens=3, temp=0, 5-second
+provider with a single short request (max_tokens=3, temp=0, 15-second
 timeout). Results are cached in _RESULTS and exposed via GET /api/provider-test.
 
 No retries — one attempt per provider. If it fails, it's reported as
@@ -22,10 +22,11 @@ _ALL_PROVIDERS = ["openai", "anthropic", "google", "groq", "ollama"]
 _PING_MSG = [{"role": "user", "content": "Reply with one word: ok"}]
 
 
-def _classify_error(e: Exception) -> str:
-    """Map an exception to a status string."""
+def _classify_error(e: BaseException, provider: str) -> str:
+    """Map an exception to a status string, logging the raw error for diagnostics."""
     name = type(e).__name__
     msg = str(e).lower()
+    logger.warning("Provider ping failed — %s: [%s] %s", provider, name, str(e)[:200])
     if "authentication" in name.lower() or "unauthorized" in msg or "api key" in msg or "invalid_api_key" in msg:
         return "auth_error"
     return "unavailable"
@@ -47,9 +48,10 @@ async def _ping_openai(client) -> tuple[str, int]:
         )
         return "ok", int((time.time() - t0) * 1000)
     except asyncio.TimeoutError:
+        logger.warning("Provider ping timed out — openai (%ds)", _TIMEOUT_S)
         return "unavailable", 0
-    except Exception as e:
-        return _classify_error(e), 0
+    except BaseException as e:
+        return _classify_error(e, "openai"), 0
 
 
 async def _ping_anthropic(client) -> tuple[str, int]:
@@ -67,9 +69,10 @@ async def _ping_anthropic(client) -> tuple[str, int]:
         )
         return "ok", int((time.time() - t0) * 1000)
     except asyncio.TimeoutError:
+        logger.warning("Provider ping timed out — anthropic (%ds)", _TIMEOUT_S)
         return "unavailable", 0
-    except Exception as e:
-        return _classify_error(e), 0
+    except BaseException as e:
+        return _classify_error(e, "anthropic"), 0
 
 
 async def _ping_google(client) -> tuple[str, int]:
@@ -86,9 +89,10 @@ async def _ping_google(client) -> tuple[str, int]:
         )
         return "ok", int((time.time() - t0) * 1000)
     except asyncio.TimeoutError:
+        logger.warning("Provider ping timed out — google (%ds)", _TIMEOUT_S)
         return "unavailable", 0
-    except Exception as e:
-        return _classify_error(e), 0
+    except BaseException as e:
+        return _classify_error(e, "google"), 0
 
 
 async def _ping_groq(client) -> tuple[str, int]:
@@ -107,9 +111,10 @@ async def _ping_groq(client) -> tuple[str, int]:
         )
         return "ok", int((time.time() - t0) * 1000)
     except asyncio.TimeoutError:
+        logger.warning("Provider ping timed out — groq (%ds)", _TIMEOUT_S)
         return "unavailable", 0
-    except Exception as e:
-        return _classify_error(e), 0
+    except BaseException as e:
+        return _classify_error(e, "groq"), 0
 
 
 async def _ping_ollama(client) -> tuple[str, int]:
@@ -125,9 +130,10 @@ async def _ping_ollama(client) -> tuple[str, int]:
         )
         return "ok", int((time.time() - t0) * 1000)
     except asyncio.TimeoutError:
+        logger.warning("Provider ping timed out — ollama (%ds)", _TIMEOUT_S)
         return "unavailable", 0
-    except Exception as e:
-        return _classify_error(e), 0
+    except BaseException as e:
+        return _classify_error(e, "ollama"), 0
 
 
 async def check_all_providers(client) -> None:
@@ -151,7 +157,11 @@ async def check_all_providers(client) -> None:
     results = await asyncio.gather(*[coro for _, coro in pings], return_exceptions=True)
 
     for (provider, _), result in zip(pings, results):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
+            logger.warning(
+                "Provider ping raised unhandled exception — %s: [%s] %s",
+                provider, type(result).__name__, str(result)[:200],
+            )
             status, latency = "unavailable", 0
         else:
             status, latency = result
