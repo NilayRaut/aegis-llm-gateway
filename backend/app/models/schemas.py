@@ -17,7 +17,7 @@ class PromptRequest(BaseModel):
 
 class RoutingDecision(BaseModel):
     """Schema for routing decision"""
-    model: Literal["llama3.1", "llama-3.1-8b-instant", "gemini-2.5-flash-preview-04-17", "gpt-4o-mini", "claude-haiku-4-5-20251001", "gpt-4o", "blocked", "error"] = Field(..., description="Which model was selected")
+    model: Literal["llama3.1", "llama-3.1-8b-instant", "gemini-2.5-flash", "gpt-4o-mini", "claude-haiku-4-5-20251001", "gpt-4o", "blocked", "error"] = Field(..., description="Which model was selected")
     reason: str = Field(..., description="Why this model was chosen")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence in routing decision")
     cache_hit: bool = Field(default=False, description="Whether response came from cache")
@@ -65,7 +65,7 @@ class DashboardStats(BaseModel):
         examples=[
             {
                 "llama3.1": 10,
-                "gemini-2.5-flash-preview-04-17": 15,
+                "gemini-2.5-flash": 15,
                 "gpt-4o-mini": 20,
                 "claude-haiku-4-5-20251001": 5,
                 "gpt-4o": 5

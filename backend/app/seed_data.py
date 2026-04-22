@@ -30,7 +30,7 @@ def _build_seed_records() -> list[dict]:
 
     Distribution:
       8  × llama3.1           (free, general)
-      10 × gemini-2.5-flash-preview-04-17  ($0.000008, general/technical)
+      10 × gemini-2.5-flash  ($0.000008, general/technical)
       12 × gpt-4o-mini       ($0.000015, general)
        5 × claude-haiku      ($0.000025, general)
        7 × gpt-4o            ($0.0003, technical, SAFE)
@@ -65,14 +65,14 @@ def _build_seed_records() -> list[dict]:
         })
         idx += 1
 
-    # Group 2: gemini-2.5-flash-preview-04-17 (10 records)
+    # Group 2: gemini-2.5-flash (10 records)
     domains_g2 = ["general"] * 6 + ["technical"] * 4
     random.shuffle(domains_g2)
     for d in domains_g2:
         records.append({
             "id": str(uuid.uuid4()),
             "timestamp": ts(idx),
-            "model_used": "gemini-2.5-flash-preview-04-17",
+            "model_used": "gemini-2.5-flash",
             "provider": "google",
             "cost_usd": round(random.uniform(0.000006, 0.000010), 8),
             "latency_ms": random.randint(400, 800),
