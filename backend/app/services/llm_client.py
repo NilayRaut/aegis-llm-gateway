@@ -60,7 +60,7 @@ class LLMClient:
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
 
         # Google
-        "gemini-2.5-flash-preview-04-17": {"input": 0.15, "output": 0.60},
+        "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
 
         # Ollama (local, free)
         "llama3.1": {"input": 0.0, "output": 0.0},
