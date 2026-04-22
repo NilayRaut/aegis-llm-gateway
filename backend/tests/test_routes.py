@@ -44,7 +44,7 @@ class TestStatsEndpoint:
     def test_model_distribution_contains_all_five_models(self, test_client):
         dist = test_client.get("/api/stats").json()["model_distribution"]
         assert "llama3.1" in dist
-        assert "gemini-2.0-flash" in dist
+        assert "gemini-2.5-flash-preview-04-17" in dist
         assert "gpt-4o-mini" in dist
         assert "gpt-4o" in dist
 
