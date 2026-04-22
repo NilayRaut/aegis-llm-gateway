@@ -1,6 +1,29 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
 import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent } from './types'
+
+const GPT4O_BASELINE = 0.0025
+
+function accumulateStats(prev: DashboardStats | null, data: LLMResponse): DashboardStats {
+  const base: DashboardStats = prev ?? {
+    total_requests: 0, cache_hit_rate: 0, cost_savings: 0,
+    avg_latency_ms: 0, hallucinations_caught: 0, model_distribution: {},
+  }
+  const newTotal = base.total_requests + 1
+  const prevHits = Math.round(base.cache_hit_rate / 100 * base.total_requests)
+  const newHits = prevHits + (data.routing_decision.cache_hit ? 1 : 0)
+  return {
+    total_requests: newTotal,
+    cache_hit_rate: Math.round((newHits / newTotal) * 1000) / 10,
+    cost_savings: base.cost_savings + Math.max(0, GPT4O_BASELINE - data.cost),
+    avg_latency_ms: Math.round((base.avg_latency_ms * base.total_requests + data.latency_ms) / newTotal),
+    hallucinations_caught: base.hallucinations_caught + (data.causal_analysis?.is_hallucination ? 1 : 0),
+    model_distribution: {
+      ...base.model_distribution,
+      [data.model_used]: (base.model_distribution[data.model_used] ?? 0) + 1,
+    },
+  }
+}
 import { PromptInput } from './components/PromptInput'
 import { ResponseCard } from './components/ResponseCard'
 import { Dashboard } from './components/Dashboard'
@@ -81,6 +104,7 @@ function App() {
 
       const data: LLMResponse = await res.json()
       setResponse(data)
+      setStats((prev) => accumulateStats(prev, data))
 
       const item: HistoryItem = {
         id: data.request_id,
