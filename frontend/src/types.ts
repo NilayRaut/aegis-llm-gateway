@@ -70,7 +70,7 @@ export interface SecurityEvent {
 export const MODEL_COLORS: Record<string, string> = {
   'llama-3.1-8b-instant': '#10b981',
   'llama3.1':             '#10b981',
-  'gemini-2.0-flash':     '#3b82f6',
+  'gemini-2.5-flash-preview-04-17': '#3b82f6',
   'gpt-4o-mini':          '#8b5cf6',
   'claude-haiku-4-5-20251001': '#f59e0b',
   'gpt-4o':               '#ef4444',

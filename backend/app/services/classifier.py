@@ -47,8 +47,8 @@ class ComplexityClassifier:
     # score range spreads traffic across all three non-OpenAI providers.
     ROUTING_TABLE: List[Tuple[float, List[Tuple[str, str]]]] = [
         (0.20, [("llama-3.1-8b-instant", "groq")]),
-        (0.45, [("gemini-2.0-flash", "google"), ("claude-haiku-4-5-20251001", "anthropic")]),
-        (0.65, [("claude-haiku-4-5-20251001", "anthropic"), ("gemini-2.0-flash", "google")]),
+        (0.45, [("gemini-2.5-flash-preview-04-17", "google"), ("claude-haiku-4-5-20251001", "anthropic")]),
+        (0.65, [("claude-haiku-4-5-20251001", "anthropic"), ("gemini-2.5-flash-preview-04-17", "google")]),
         (0.80, [("gpt-4o-mini", "openai"), ("claude-haiku-4-5-20251001", "anthropic")]),
         (1.01, [("gpt-4o", "openai")]),
     ]

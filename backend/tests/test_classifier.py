@@ -57,7 +57,7 @@ class TestRoutingTable:
     def test_mid_low_score_routes_to_gemini(self):
         model, provider = classifier.route(0.3)
         assert provider == "google"
-        assert model == "gemini-2.0-flash"
+        assert model == "gemini-2.5-flash-preview-04-17"
 
     def test_mid_score_routes_to_gpt4o_mini(self):
         model, provider = classifier.route(0.70)  # mid of (0.65, 0.80)
