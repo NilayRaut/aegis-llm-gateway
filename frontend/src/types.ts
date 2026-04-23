@@ -66,6 +66,19 @@ export interface SecurityEvent {
   domain: string
 }
 
+export interface CausalAnalysisResult {
+  n?: number
+  n_sensitive_domain?: number
+  n_general?: number
+  causal_effect_usd?: number
+  placebo_effect_usd?: number
+  refutation_passed?: boolean
+  interpretation?: string
+  method?: string
+  dag?: string
+  error?: string
+}
+
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow
 export const MODEL_COLORS: Record<string, string> = {
   'llama-3.1-8b-instant': '#10b981',

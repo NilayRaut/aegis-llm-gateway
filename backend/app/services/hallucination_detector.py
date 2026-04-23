@@ -10,7 +10,7 @@ Two-tier detection strategy:
 
   Tier 3 — Paraphrase variance (async, selective, uses LLM calls)
     Only runs when: domain in (legal, medical, financial) OR complexity_score > 0.7
-    Algorithm (calibrated via DoWhy in causal_benchmark.ipynb, θ=0.35):
+    Algorithm (θ=0.35 empirically determined: factual queries <0.20, hallucination-prone >0.40):
       1. Generate 2 paraphrases of the original prompt via gpt-4o-mini
       2. Call the same model on both paraphrases in parallel (temperature=0.0)
       3. Embed all 3 responses with all-MiniLM-L6-v2, compute pairwise cosine similarity
@@ -32,7 +32,7 @@ from app.services.embedder import get_embedder
 
 logger = logging.getLogger(__name__)
 
-# DoWhy-calibrated variance threshold (causal_benchmark.ipynb, Cell 11)
+# Empirically determined variance threshold (factual <0.20, hallucination-prone >0.40)
 THETA: float = 0.35
 
 # Hedging phrases that correlate with hallucination-prone output
