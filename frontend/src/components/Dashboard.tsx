@@ -1,9 +1,9 @@
-import { TrendingDown, Shield, CheckCircle, AlertTriangle, Activity, ShieldAlert } from 'lucide-react'
+import { TrendingDown, Shield, CheckCircle, AlertTriangle, Activity, ShieldAlert, GitBranch } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts'
-import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, MODEL_COLORS } from '../types'
+import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, MODEL_COLORS } from '../types'
 
 interface Props {
   stats: DashboardStats | null
@@ -11,6 +11,7 @@ interface Props {
   providerHealth: ProviderHealth[]
   providerTest: Record<string, ProviderTestResult>
   securityEvents: SecurityEvent[]
+  causalAnalysis: CausalAnalysisResult | null
 }
 
 const TEST_BADGE: Record<string, { label: string; cls: string }> = {
@@ -54,7 +55,7 @@ const TooltipStyle = {
 
 const GPT4O_BASELINE = 0.0025
 
-export function Dashboard({ stats, history, providerHealth, providerTest, securityEvents }: Props) {
+export function Dashboard({ stats, history, providerHealth, providerTest, securityEvents, causalAnalysis }: Props) {
   // ── Panel A: Live Routing Trace (latest query) ─────────────────────────────
   const latest = history[0] ?? null
 
@@ -423,6 +424,53 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* ── DoWhy Causal Analysis ────────────────────────────────────────── */}
+      <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-4">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-2">
+          <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+          DoWhy Causal Analysis
+        </h3>
+        <p className="text-[10px] text-slate-600 mb-3">
+          Backdoor adjustment estimating causal effect of domain classification on routing cost (controlling for complexity score).
+        </p>
+        {!causalAnalysis ? (
+          <p className="text-xs text-slate-600 text-center py-4">Loading…</p>
+        ) : causalAnalysis.error ? (
+          <p className="text-xs text-slate-500 text-center py-4">{causalAnalysis.error}</p>
+        ) : (
+          <div className="space-y-2 text-xs">
+            <div className="flex gap-2">
+              <div className="flex-1 bg-slate-900/60 rounded-lg p-2.5">
+                <p className="text-slate-500 mb-1 text-[10px]">Causal Effect</p>
+                <p className="text-white font-mono font-semibold">
+                  +${((causalAnalysis.causal_effect_usd ?? 0)).toFixed(5)}/req
+                </p>
+              </div>
+              <div className="flex-1 bg-slate-900/60 rounded-lg p-2.5">
+                <p className="text-slate-500 mb-1 text-[10px]">Refutation</p>
+                <p className={`font-semibold ${causalAnalysis.refutation_passed ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {causalAnalysis.refutation_passed ? 'PASSED' : 'FAILED'}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-slate-900/60 rounded-lg p-2.5">
+                <p className="text-slate-500 mb-1 text-[10px]">Sensitive Requests</p>
+                <p className="text-amber-400 font-semibold">{causalAnalysis.n_sensitive_domain ?? 0}</p>
+              </div>
+              <div className="flex-1 bg-slate-900/60 rounded-lg p-2.5">
+                <p className="text-slate-500 mb-1 text-[10px]">Total Analyzed</p>
+                <p className="text-slate-300 font-semibold">{causalAnalysis.n ?? 0}</p>
+              </div>
+            </div>
+            <div className="bg-slate-900/60 rounded-lg p-2.5">
+              <p className="text-slate-500 mb-1 text-[10px]">Method</p>
+              <p className="text-slate-400 font-mono text-[10px]">backdoor.linear_regression + placebo_treatment_refuter</p>
+            </div>
           </div>
         )}
       </div>

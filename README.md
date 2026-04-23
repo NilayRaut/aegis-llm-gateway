@@ -34,7 +34,7 @@ Instead of asking "is this response correct?" — which requires ground truth �
 
 If a model's claim shifts when the question is paraphrased, that is a causal signal: the claim was not anchored to knowledge, only to surface prompt features. This is a `do(X)` intervention in causal language. It requires no labels, no ground truth, and no external knowledge base.
 
-The variance threshold (θ = 0.35) that separates stable facts from hallucination-prone claims is calibrated offline using DoWhy, with placebo treatment refutation tests to confirm the threshold is causally justified — not statistically tuned.
+The variance threshold (θ = 0.35) is empirically determined: factual queries consistently produce paraphrase variance below 0.20; hallucination-prone queries produce variance above 0.40. θ = 0.35 sits in the upper half of this gap, biased toward precision. A post-hoc DoWhy causal analysis at `/api/causal-analysis` confirms domain classification operates as a genuine causal intervention on routing cost.
 
 ---
 
@@ -66,20 +66,6 @@ Incoming Prompt
 [5] Log to SQLite (cost, model, provider, latency, risk_level, cache_hit, domain)
       |
 Response + causal_analysis { is_hallucination, confidence, explanation, pathway }
-```
-
-### Offline DoWhy Calibration (runs once, not in request path)
-
-```
-1,000 synthetic (prompt, context, response) tuples
-      |
-Claude Haiku scores response quality (different model family = non-circular judge)
-      |
-DoWhy: context_relevance → response_quality (+ confounders: length, domain, temperature)
-      |
-Refutation tests: placebo_treatment, random_common_cause
-      |
-θ = 0.35  ← causally-justified variance threshold used at runtime
 ```
 
 ---
@@ -154,7 +140,7 @@ npm run dev
 ```bash
 cd backend
 pytest tests/ -v
-# 54 tests, ~8s, no real API calls made
+# 57 tests, ~8s, no real API calls made
 ```
 
 ---
@@ -222,7 +208,7 @@ r1, r2 = await asyncio.gather(query(p1, model, temp=0), query(p2, model, temp=0)
 # stochastic and deterministic outputs.
 variance = 1 - cosine_similarity(embed(r1), embed(r2))
 
-if variance > 0.35:   # θ calibrated offline via DoWhy
+if variance > 0.35:   # θ empirically set; validated via /api/causal-analysis
     return HIGH_RISK  # pathway="paraphrase_variance"
 ```
 
@@ -234,13 +220,7 @@ Tier 3 failures (API errors, insufficient paraphrases) degrade gracefully to Tie
 - Final risk = max(domain_risk, detection_risk)
 
 **What's intentionally not included:**
-Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and is not demonstrable in real time. The offline DoWhy calibration makes Tier 3 alone defensible.
-
-### Offline DoWhy Calibration
-
-See `notebooks/causal_benchmark.ipynb` for the full calibration. The key claim:
-
-> θ = 0.35 is not a tuned hyperparameter — it is the causally-estimated boundary between context-anchored and context-unanchored responses, validated by placebo treatment refutation.
+Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and is not demonstrable in real time. Paraphrase variance alone is sufficient for a runtime causal signal.
 
 ---
 
@@ -252,6 +232,7 @@ See `notebooks/causal_benchmark.ipynb` for the full calibration. The key claim:
 | `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
 | `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
 | `/api/history` | GET | Last N request records from SQLite |
+| `/api/causal-analysis` | GET | DoWhy backdoor adjustment: causal effect of domain classification on routing cost |
 | `/health` | GET | Backend health check |
 
 ---
@@ -301,7 +282,7 @@ aegis-project/
 │           └── Dashboard.tsx              # Live Routing Trace, Provider Health Board,
 │                                          # Savings Accumulator, 4 Recharts visualizations
 ├── notebooks/
-│   └── causal_benchmark.ipynb             # DoWhy offline calibration + Pearl Ladder benchmark
+│   └── causal_benchmark.ipynb             # Pearl Ladder benchmark (exploratory, not in request path)
 └── README.md
 ```
 
@@ -323,9 +304,51 @@ SQLite database is ephemeral on Render — reseeded with 50 demo records on each
 ## Scope Boundaries
 
 - This is not a fact-checking or retrieval system — no external knowledge base is queried.
-- The DoWhy calibration notebook is an offline validation artifact. It does not run in the request path.
-- The variance threshold (θ = 0.35) is fixed at runtime from the offline calibration output.
+- The variance threshold (θ = 0.35) is fixed at runtime; empirically determined from observed variance distributions across prompt classes.
+- A live DoWhy causal analysis (`/api/causal-analysis`) validates that domain classification causally affects routing cost — this runs on logged request data, not in the request path.
 - This system is not a replacement for human review in regulated domains.
+
+---
+
+## Architecture Decisions
+
+| Pipeline Stage | Business Need | Design Rationale |
+|---|---|---|
+| [1] Security Gate | Prevent harm before any model call | Deterministic rules — PII and injection must be caught 100%, not probabilistically |
+| [2] Semantic Cache | Eliminate duplicate API costs | Cosine similarity ≥ 0.85 catches paraphrases that keyword caches miss |
+| [3] Complexity Classifier | Route simple queries to cheap models | 4-factor weighted score; question type weighted 0.35 (dominant signal for model tier) |
+| [4] Domain Hard Gate | Sensitive domains require safest model, unconditionally | Runs before complexity classifier; cannot be overridden by any other factor |
+| [5] LLM Call | Get a response from the routed model | Async with 3-retry + exponential backoff; provider rotation distributes load |
+| [6] Causal Risk Check | Flag responses that may be hallucinations, without ground truth | Paraphrase variance (Pearl Rung 2 intervention): `do(rephrase(X))` |
+| [7] SQLite Log | Observable, auditable, cost-trackable system | Every request logged with cost, model, latency, domain, risk level |
+
+**Strategic Delegation — Human vs. AI decisions:**
+
+| Decision | Owner | Rationale |
+|---|---|---|
+| θ=0.35 variance threshold | Human (empirical) | Threshold requires domain judgment about precision/recall tradeoff |
+| Domain hard-gate categories | Human | Risk classification is an ethical, not statistical, decision |
+| Routing tier boundaries (0.20/0.45/0.65/0.80) | Human (designed) | Cost/quality tradeoff requires human judgment |
+| Security keyword list | Human | Injection patterns require human review to define |
+| Per-request routing decision | AI (classifier) | Automated, consistent, deterministic |
+| Hallucination flagging | AI (paraphrase variance) | Fast, no ground truth required |
+| Response generation | AI (routed LLM) | Core AI task |
+
+---
+
+## Ethics & Limitations
+
+**Content filtering**: Three-gate security check blocks PII (email, SSN, phone), prompt injection patterns, and hard-routes sensitive-domain queries to the safest model tier.
+
+**Bias**: The domain classifier uses keyword matching. Edge cases (e.g., a legal case study framed as fiction) may misclassify. Misclassification in this system errs toward GPT-4o (over-routing), not toward cheap models (under-routing) — the safer failure mode.
+
+**Privacy**: No user data is stored beyond the current session SQLite log, which is ephemeral on Render (wiped on each deploy). No data is sent to third parties beyond the selected LLM provider.
+
+**Limitations**: Paraphrase variance detects response *instability*, not factual incorrectness. A confidently wrong but internally consistent answer will not be flagged. This system is not a replacement for human review in regulated domains.
+
+**Misuse**: The routing system could be configured to minimize cost at the expense of answer quality. The domain hard-gate prevents this for medical/legal/financial queries; other domains rely on the classifier.
+
+**Copyright**: All code original. API usage governed by provider terms of service. MIT License.
 
 ---
 

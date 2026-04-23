@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
-import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent } from './types'
+import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult } from './types'
 
 const GPT4O_BASELINE = 0.0025
 
@@ -61,6 +61,16 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | undefined>()
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
+  const [causalAnalysis, setCausalAnalysis] = useState<CausalAnalysisResult | null>(null)
+
+  const fetchCausalAnalysis = async () => {
+    try {
+      const res = await fetch('/api/causal-analysis')
+      if (res.ok) setCausalAnalysis(await res.json())
+    } catch {
+      // non-critical
+    }
+  }
 
   const fetchStats = async () => {
     try {
@@ -79,8 +89,8 @@ function App() {
     }
   }
 
-  useEffect(() => { fetchStats() }, [])
-  useEffect(() => { if (response) fetchStats() }, [response])
+  useEffect(() => { fetchStats(); fetchCausalAnalysis() }, [])
+  useEffect(() => { if (response) { fetchStats(); fetchCausalAnalysis() } }, [response])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -261,7 +271,7 @@ function App() {
         </div>
 
         {/* Panel 3: Dashboard */}
-        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} />
+        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} causalAnalysis={causalAnalysis} />
       </div>
     </div>
   )

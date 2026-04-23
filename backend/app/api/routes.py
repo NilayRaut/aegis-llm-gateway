@@ -289,3 +289,30 @@ async def get_stats():
         hallucinations_caught=stats["hallucinations_caught"],
         model_distribution=model_dist,
     )
+
+
+_causal_cache: dict = {}
+
+
+@router.get("/causal-analysis")
+async def get_causal_analysis():
+    """
+    DoWhy backdoor causal analysis on logged request data.
+
+    Estimates the causal effect of domain classification (is_sensitive_domain)
+    on routing cost per request, controlling for complexity_score as a confounder.
+    Results are cached for 60 seconds to avoid re-running the analysis on every poll.
+    """
+    import time
+    from app.services.causal_analysis import run_domain_cost_analysis
+
+    now = time.time()
+    if _causal_cache.get("ts") and now - _causal_cache["ts"] < 60:
+        return _causal_cache["result"]
+
+    rows = await db.get_all_requests_for_analysis()
+    result = await run_domain_cost_analysis(rows)
+
+    _causal_cache["ts"] = now
+    _causal_cache["result"] = result
+    return result

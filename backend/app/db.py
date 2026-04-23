@@ -194,6 +194,22 @@ async def get_security_events(limit: int = 20) -> list[dict]:
     return await asyncio.to_thread(_query)
 
 
+async def get_all_requests_for_analysis() -> list[dict]:
+    """Return all non-seeded requests with the fields needed for causal analysis."""
+    def _query():
+        conn = _get_conn()
+        rows = conn.execute(
+            """SELECT domain, cost_usd, complexity_score
+               FROM requests
+               WHERE is_seed = 0 OR is_seed IS NULL
+               ORDER BY timestamp ASC"""
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    return await asyncio.to_thread(_query)
+
+
 async def get_provider_stats() -> list[dict]:
     """
     Per-provider aggregates for the Provider Health Board panel.
