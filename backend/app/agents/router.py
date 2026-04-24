@@ -186,7 +186,7 @@ class RouterAgent:
                     model="llama3.1",
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=500,
+                    max_tokens=2000,
                 )
                 state["model"] = "llama3.1"
                 state["provider"] = "ollama"
@@ -199,7 +199,7 @@ class RouterAgent:
                     model=state["model"],
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=500,
+                    max_tokens=2000,
                 )
             state["response"] = response.content
             state["input_tokens"] = response.input_tokens
@@ -222,7 +222,7 @@ class RouterAgent:
                         model="gpt-4o-mini",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=500,
+                        max_tokens=2000,
                     )
                     state["model"] = "gpt-4o-mini"
                     state["provider"] = "openai"
