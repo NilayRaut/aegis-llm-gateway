@@ -1,3 +1,10 @@
+export interface StreamStage {
+  stage: number
+  label: string
+  message: string
+  done?: boolean
+}
+
 export interface RoutingDecision {
   model: string
   reason: string

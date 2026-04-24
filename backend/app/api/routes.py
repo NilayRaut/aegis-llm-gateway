@@ -11,9 +11,11 @@ Full pipeline per request:
 """
 
 import uuid
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.models.schemas import (
     PromptRequest,
@@ -212,6 +214,149 @@ async def chat(request: PromptRequest):
     except Exception as e:
         logger.exception("Unexpected error processing request %s", request_id)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: PromptRequest):
+    """
+    Streaming version of /chat — emits SSE events for each pipeline stage.
+    Event types: status | done | error
+    """
+    async def _generate():
+        request_id = str(uuid.uuid4())
+
+        def _evt(type: str, **kwargs) -> str:
+            return f"data: {json.dumps({'type': type, **kwargs})}\n\n"
+
+        try:
+            # Stage 1 — Security gate
+            yield _evt("status", stage=1, label="Security Gate", message="Scanning for PII and injection patterns…")
+            security_result = await security_checker.check_async(request.prompt)
+
+            if security_result.blocked:
+                await db.log_request(
+                    id=request_id, model_used="blocked", provider="",
+                    cost_usd=0.0, latency_ms=0, complexity_score=0.0,
+                    domain=security_result.domain or "general", cache_hit=False,
+                    risk_level="HIGH", security_blocked=True,
+                    security_reason=security_result.reason or "Security policy violation",
+                )
+                yield _evt("error", message=security_result.reason, stage="security")
+                return
+
+            domain = security_result.domain
+            risk_level = _risk_from_domain(domain)
+            yield _evt("status", stage=1, label="Security Gate", message="Cleared", done=True)
+
+            # Stage 2 — Semantic cache
+            yield _evt("status", stage=2, label="Semantic Cache", message="Searching embedding cache (cosine ≥ 0.85)…")
+            cached = semantic_cache.lookup(request.prompt)
+            if cached is not None:
+                await db.log_request(
+                    id=request_id, model_used=cached.get("model_used", "cache"),
+                    provider=cached.get("provider", ""), cost_usd=0.0, latency_ms=5,
+                    complexity_score=cached.get("complexity_score", 0.0), domain=domain,
+                    cache_hit=True, risk_level=risk_level, security_blocked=False,
+                )
+                yield _evt("status", stage=2, label="Semantic Cache", message="HIT — returning cached response", done=True)
+                routing = RoutingDecision(
+                    model=cached["routing_decision"]["model"],
+                    reason="Served from semantic cache (similarity ≥ 0.85)",
+                    confidence=cached["routing_decision"]["confidence"],
+                    cache_hit=True,
+                )
+                from app.models.schemas import LLMResponse as LLMResponseSchema
+                payload = LLMResponseSchema(
+                    response=cached["response"], model_used=cached["model_used"],
+                    cost=0.0, latency_ms=5, routing_decision=routing, causal_analysis=None,
+                    request_id=request_id, complexity_score=cached.get("complexity_score", 0.0),
+                    domain=domain, risk_level=risk_level, provider=cached.get("provider", ""),
+                )
+                yield _evt("done", data=payload.model_dump())
+                return
+
+            yield _evt("status", stage=2, label="Semantic Cache", message="Miss — no similar query found", done=True)
+
+            # Stage 3 — Complexity scoring + routing decision
+            forced = security_result.forced_model
+            if forced:
+                yield _evt("status", stage=3, label="Domain Gate", message=f"Sensitive domain — hard-routing to {forced}")
+            else:
+                yield _evt("status", stage=3, label="Complexity Classifier", message="Scoring prompt across 4 factors…")
+
+            # Stage 4 — LLM call (router runs classify + route + call internally)
+            result = await router_agent.process(
+                prompt=request.prompt,
+                context=request.context,
+                forced_model=forced,
+            )
+
+            if result.get("error"):
+                yield _evt("error", message=result["error"])
+                return
+
+            model_label = result["model_used"]
+            score_label = f"{result.get('complexity_score', 0):.2f}"
+            yield _evt("status", stage=3, label="Routing Decision",
+                       message=f"Score {score_label} → {model_label}", done=True)
+            yield _evt("status", stage=4, label="LLM Call",
+                       message=f"Response in {result['latency_ms']}ms", done=True)
+
+            # Stage 5 — Hallucination check
+            yield _evt("status", stage=5, label="Hallucination Check", message="Running paraphrase variance test…")
+            detection = await hallucination_detector.analyze(
+                prompt=request.prompt, response=result["response"],
+                model=result["model_used"], provider=result.get("provider", "openai"),
+                complexity_score=result.get("complexity_score", 0.0),
+                domain=domain, llm_client=llm_client,
+            )
+            risk_level = _merge_risk(risk_level, detection.is_hallucination, detection.pathway)
+            risk_msg = f"Risk: {risk_level}" + (" — HIGH variance flagged" if detection.is_hallucination else "")
+            yield _evt("status", stage=5, label="Hallucination Check", message=risk_msg, done=True)
+
+            # Stage 6 — Cache store + DB log
+            yield _evt("status", stage=6, label="Audit Log", message="Logging cost, latency, risk to SQLite…")
+            if not detection.is_hallucination:
+                semantic_cache.add(request.prompt, result)
+            await db.log_request(
+                id=request_id, model_used=result["model_used"],
+                provider=result.get("provider", ""), cost_usd=result["cost"],
+                latency_ms=result["latency_ms"],
+                complexity_score=result.get("complexity_score", 0.0),
+                domain=domain, cache_hit=False, risk_level=risk_level, security_blocked=False,
+            )
+            yield _evt("status", stage=6, label="Audit Log", message="Logged", done=True)
+
+            # Done — emit full response
+            routing_decision = RoutingDecision(
+                model=result["routing_decision"]["model"],
+                reason=result["routing_decision"]["reason"],
+                confidence=result["routing_decision"]["confidence"],
+                cache_hit=False,
+            )
+            causal_analysis = CausalAnalysis(
+                confidence=detection.confidence, pathway=detection.pathway,
+                is_hallucination=detection.is_hallucination, explanation=detection.explanation,
+            )
+            from app.models.schemas import LLMResponse as LLMResponseSchema
+            payload = LLMResponseSchema(
+                response=result["response"], model_used=result["model_used"],
+                cost=result["cost"], latency_ms=result["latency_ms"],
+                routing_decision=routing_decision, causal_analysis=causal_analysis,
+                request_id=request_id, complexity_score=result.get("complexity_score", 0.0),
+                domain=domain, risk_level=risk_level, provider=result.get("provider", ""),
+            )
+            yield _evt("done", data=payload.model_dump())
+
+        except Exception as e:
+            logger.exception("Streaming error for request %s", request_id)
+            yield _evt("error", message=f"Internal error: {str(e)}")
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/history")

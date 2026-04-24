@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult } from '../types'
+import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, StreamStage } from '../types'
 import { DemoTour, TOUR_STEPS } from '../components/DemoTour'
 import { EmptyState } from '../components/EmptyState'
+import { StreamingStatus } from '../components/StreamingStatus'
 import { PromptInput } from '../components/PromptInput'
 import { ResponseCard } from '../components/ResponseCard'
 import { Dashboard } from '../components/Dashboard'
@@ -69,6 +70,7 @@ export function AppPage() {
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [causalAnalysis, setCausalAnalysis] = useState<CausalAnalysisResult | null>(null)
   const [tourStep, setTourStep] = useState<number | null>(null)
+  const [streamStages, setStreamStages] = useState<StreamStage[]>([])
 
   const fetchCausalAnalysis = async () => {
     try {
@@ -108,36 +110,72 @@ export function AppPage() {
     if (!promptText.trim()) return
     setLoading(true)
     setError('')
+    setResponse(null)
+    setStreamStages([])
     setSelectedHistoryId(undefined)
+
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: promptText }),
       })
-      if (!res.ok) {
+
+      if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ detail: 'Request failed' }))
         throw new Error(err.detail || 'Request failed')
       }
-      const data: LLMResponse = await res.json()
-      setResponse(data)
-      setStats((prev) => accumulateStats(prev, data))
-      const item: HistoryItem = {
-        id: data.request_id,
-        timestamp: new Date().toISOString(),
-        prompt: promptText,
-        response: data,
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const evt = JSON.parse(line.slice(6))
+
+          if (evt.type === 'status') {
+            setStreamStages((prev) => {
+              const idx = prev.findIndex((s) => s.stage === evt.stage && s.label === evt.label)
+              const updated = { stage: evt.stage, label: evt.label, message: evt.message, done: evt.done ?? false }
+              if (idx >= 0) {
+                const next = [...prev]
+                next[idx] = updated
+                return next
+              }
+              return [...prev, updated]
+            })
+          } else if (evt.type === 'done') {
+            const data: LLMResponse = evt.data
+            setResponse(data)
+            setStats((prev) => accumulateStats(prev, data))
+            const item: HistoryItem = {
+              id: data.request_id,
+              timestamp: new Date().toISOString(),
+              prompt: promptText,
+              response: data,
+            }
+            setHistory((prev) => {
+              const updated = [item, ...prev].slice(0, MAX_HISTORY)
+              saveHistory(updated)
+              return updated
+            })
+            setSelectedHistoryId(data.request_id)
+          } else if (evt.type === 'error') {
+            setError(evt.message)
+          }
+        }
       }
-      setHistory((prev) => {
-        const updated = [item, ...prev].slice(0, MAX_HISTORY)
-        saveHistory(updated)
-        return updated
-      })
-      setSelectedHistoryId(data.request_id)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to get response.'
       setError(msg)
-      setResponse(null)
     } finally {
       setLoading(false)
     }
@@ -280,26 +318,15 @@ export function AppPage() {
               <EmptyState onStartTour={startTour} />
             )}
 
-            {/* Routing pipeline — always visible once a response exists */}
-            {(response || loading) && <RoutingFlow response={loading ? null : response} />}
+            {/* Pipeline streaming status */}
+            {streamStages.length > 0 && <StreamingStatus stages={streamStages} />}
+
+            {/* Routing flow — shown once response arrives */}
+            {response && <RoutingFlow response={response} />}
 
             {error && (
               <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 text-sm text-red-400">
                 {error}
-              </div>
-            )}
-
-            {/* Skeleton while loading */}
-            {loading && (
-              <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 p-5 space-y-3 animate-pulse">
-                <div className="h-2.5 bg-slate-700 rounded w-1/5" />
-                <div className="h-32 bg-slate-700/50 rounded" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="h-14 bg-slate-700/50 rounded" />
-                  <div className="h-14 bg-slate-700/50 rounded" />
-                  <div className="h-14 bg-slate-700/50 rounded" />
-                  <div className="h-14 bg-slate-700/50 rounded" />
-                </div>
               </div>
             )}
 
