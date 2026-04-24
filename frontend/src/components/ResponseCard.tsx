@@ -51,6 +51,11 @@ export function ResponseCard({ response }: Props) {
         <div className="prose prose-invert prose-sm max-w-none bg-slate-900/60 rounded-lg p-4 text-slate-200">
           <ReactMarkdown>{response.response}</ReactMarkdown>
         </div>
+        {domain === 'general' && (
+          <p className="text-[10px] text-amber-500/60 mt-2 leading-relaxed">
+            Note: Responses reflect each model's training cutoff. Verify time-sensitive information independently.
+          </p>
+        )}
       </div>
 
       {/* Metrics grid */}

@@ -129,7 +129,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Call OpenAI API (GPT-4o, GPT-4o-mini)
@@ -187,7 +187,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Call Anthropic API (Claude Haiku)
@@ -260,7 +260,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Call Google Generative AI API (Gemini Flash)
@@ -333,7 +333,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Call Ollama API (Llama-3 local)
@@ -388,7 +388,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Call Groq API (llama-3.1-8b-instant — free tier, ~500 tok/s)
@@ -430,7 +430,7 @@ class LLMClient:
         model: str,
         messages: list,
         temperature: float = 0.7,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,
     ) -> LLMResponse:
         """
         Route to appropriate LLM provider

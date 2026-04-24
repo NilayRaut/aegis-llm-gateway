@@ -12,16 +12,20 @@ export function PromptInput({ prompt, loading, onPromptChange, onSubmit }: Props
   return (
     <div className="bg-slate-900/80 border-t border-white/5 px-4 py-3 flex-shrink-0">
       {/* Demo prompt chips */}
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {DEMO_PROMPTS.map(({ label, prompt: p }) => (
-          <button
-            key={label}
-            onClick={() => onPromptChange(p)}
-            className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors border border-slate-700/60"
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-2">
+        <p className="text-[10px] text-slate-600 uppercase tracking-wide mb-1.5">Try a demo:</p>
+        <div className="flex flex-wrap gap-1.5">
+          {DEMO_PROMPTS.map(({ label, prompt: p, tooltip }) => (
+            <button
+              key={label}
+              onClick={() => onPromptChange(p)}
+              title={tooltip}
+              className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors border border-slate-700/60"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <form onSubmit={onSubmit} className="flex gap-2 items-end">
