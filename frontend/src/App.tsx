@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Shield, Menu } from 'lucide-react'
 import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult } from './types'
+import { DemoTour, IntroCard, TOUR_STEPS } from './components/DemoTour'
 
 const GPT4O_BASELINE = 0.0025
 
@@ -62,6 +63,8 @@ function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | undefined>()
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [causalAnalysis, setCausalAnalysis] = useState<CausalAnalysisResult | null>(null)
+  const [tourStep, setTourStep] = useState<number | null>(null)
+  const [introVisible, setIntroVisible] = useState(() => !localStorage.getItem('aegis_intro_dismissed'))
 
   const fetchCausalAnalysis = async () => {
     try {
@@ -92,34 +95,28 @@ function App() {
   useEffect(() => { fetchStats(); fetchCausalAnalysis() }, [])
   useEffect(() => { if (response) { fetchStats(); fetchCausalAnalysis() } }, [response])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!prompt.trim()) return
-
+  const doSubmit = async (promptText: string) => {
+    if (!promptText.trim()) return
     setLoading(true)
     setError('')
     setSelectedHistoryId(undefined)
-
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: promptText }),
       })
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Request failed' }))
         throw new Error(err.detail || 'Request failed')
       }
-
       const data: LLMResponse = await res.json()
       setResponse(data)
       setStats((prev) => accumulateStats(prev, data))
-
       const item: HistoryItem = {
         id: data.request_id,
         timestamp: new Date().toISOString(),
-        prompt,
+        prompt: promptText,
         response: data,
       }
       setHistory((prev) => {
@@ -136,6 +133,35 @@ function App() {
       setLoading(false)
     }
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await doSubmit(prompt)
+  }
+
+  const startTour = () => {
+    localStorage.setItem('aegis_intro_dismissed', '1')
+    setIntroVisible(false)
+    setTourStep(0)
+    const p = TOUR_STEPS[0].prompt
+    setPrompt(p)
+    doSubmit(p)
+  }
+
+  const advanceTour = () => {
+    if (tourStep === null) return
+    const next = tourStep + 1
+    if (next >= TOUR_STEPS.length) {
+      setTourStep(null)
+      return
+    }
+    setTourStep(next)
+    const p = TOUR_STEPS[next].prompt
+    setPrompt(p)
+    doSubmit(p)
+  }
+
+  const exitTour = () => setTourStep(null)
 
   const handleHistorySelect = (item: HistoryItem) => {
     setResponse(item.response)
@@ -163,6 +189,12 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={startTour}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-indigo-100 transition-colors"
+            >
+              Demo Tour
+            </button>
             {Object.entries(providerTest).some(([, v]) => v.status === 'auth_error') ? (
               <>
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -235,6 +267,27 @@ function App() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Scrollable response area */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
+            {/* Intro card — shown once per session */}
+            {introVisible && tourStep === null && (
+              <IntroCard
+                onDismiss={() => {
+                  localStorage.setItem('aegis_intro_dismissed', '1')
+                  setIntroVisible(false)
+                }}
+                onStartTour={startTour}
+              />
+            )}
+
+            {/* Guided demo tour overlay */}
+            {tourStep !== null && (
+              <DemoTour
+                step={tourStep}
+                loading={loading}
+                onNext={advanceTour}
+                onExit={exitTour}
+              />
+            )}
+
             {/* Routing pipeline — always visible */}
             <RoutingFlow response={loading ? null : response} />
 
