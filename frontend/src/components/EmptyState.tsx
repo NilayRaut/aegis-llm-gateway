@@ -7,33 +7,33 @@ interface Props {
 const FEATURES = [
   {
     icon: TrendingDown,
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-900/20',
-    border: 'border-emerald-800/40',
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
     title: 'Cost Routing',
     desc: 'Scores complexity 0–1 and routes to the cheapest capable model — free Llama to GPT-4o.',
   },
   {
     icon: AlertTriangle,
-    color: 'text-amber-400',
-    bg: 'bg-amber-900/20',
-    border: 'border-amber-800/40',
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
     title: 'Hallucination Detection',
     desc: 'Paraphrases your prompt 2×, compares responses at temp=0. Variance > θ=0.35 → flagged.',
   },
   {
     icon: Shield,
-    color: 'text-red-400',
-    bg: 'bg-red-900/20',
-    border: 'border-red-800/40',
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
     title: 'Security Gate',
     desc: 'Blocks PII and injection attempts before any model call. Legal/medical/financial → always GPT-4o.',
   },
   {
     icon: Zap,
-    color: 'text-blue-400',
-    bg: 'bg-blue-900/20',
-    border: 'border-blue-800/40',
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
     title: 'Semantic Cache',
     desc: 'Embeds every query with all-MiniLM-L6-v2. Same question twice = ≤5ms, $0.00.',
   },
@@ -53,7 +53,7 @@ export function EmptyState({ onStartTour }: Props) {
               <Icon className={`w-4 h-4 ${color} flex-shrink-0`} />
               <p className={`text-sm font-semibold ${color}`}>{title}</p>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+            <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
           </div>
         ))}
       </div>
@@ -67,7 +67,7 @@ export function EmptyState({ onStartTour }: Props) {
           <Play className="w-3.5 h-3.5" />
           Run the 5-step demo tour
         </button>
-        <p className="text-xs text-slate-600 mt-2">or type your own prompt below</p>
+        <p className="text-xs text-slate-400 mt-2">or type your own prompt below</p>
       </div>
     </div>
   )

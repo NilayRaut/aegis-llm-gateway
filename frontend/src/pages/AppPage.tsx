@@ -71,6 +71,7 @@ export function AppPage() {
   const [causalAnalysis, setCausalAnalysis] = useState<CausalAnalysisResult | null>(null)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [streamStages, setStreamStages] = useState<StreamStage[]>([])
+  const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
 
   const fetchCausalAnalysis = async () => {
     try {
@@ -216,49 +217,68 @@ export function AppPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="h-screen overflow-hidden flex flex-col bg-[#F8F7F4]">
       {/* ── Header ───────────────────────────────────────────────────── */}
-      <header className="border-b border-white/5 bg-slate-900/70 backdrop-blur-md flex-shrink-0 z-20">
+      <header className="border-b border-[#E5E2DC] bg-white shadow-sm flex-shrink-0 z-20">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileHistoryOpen((o) => !o)}
-              className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-[#F1EFE9] transition-colors"
             >
               <Menu className="w-4 h-4" />
             </button>
             <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <Shield className="w-7 h-7 text-emerald-400" />
+              <Shield className="w-7 h-7 text-emerald-600" />
               <div className="text-left">
-                <h1 className="text-lg font-bold text-white tracking-tight leading-none">Aegis</h1>
-                <p className="text-xs text-slate-500 leading-none">Agentic LLM Gateway</p>
+                <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none font-heading">Aegis</h1>
+                <p className="text-xs text-slate-400 leading-none">Agentic LLM Gateway</p>
               </div>
             </button>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={startTour}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-indigo-100 transition-colors"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
             >
               Demo Tour
             </button>
             {Object.entries(providerTest).some(([, v]) => v.status === 'auth_error') ? (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                <span className="text-xs text-amber-500">Provider key error — check dashboard</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs text-amber-600">Provider key error — check dashboard</span>
               </>
             ) : (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-slate-500">Live</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs text-slate-400">Live</span>
               </>
             )}
             {stats && (
-              <span className="text-xs text-slate-600 ml-1">{stats.total_requests} requests</span>
+              <span className="text-xs text-slate-400 ml-1 font-mono">{stats.total_requests} requests</span>
             )}
           </div>
         </div>
       </header>
+
+      {/* ── Mobile Tab Strip ─────────────────────────────────────────── */}
+      <div className="border-b border-[#E5E2DC] bg-white flex-shrink-0 lg:hidden">
+        <div className="flex">
+          {(['chat', 'dashboard'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors ${
+                activeTab === tab
+                  ? 'border-emerald-600 text-emerald-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ── 3-Panel Layout ───────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 max-w-[1600px] mx-auto w-full px-4 py-4 flex gap-4 overflow-hidden">
@@ -273,34 +293,34 @@ export function AppPage() {
         {/* Mobile history drawer */}
         {mobileHistoryOpen && (
           <div className="lg:hidden fixed inset-0 z-30 flex">
-            <div className="w-72 bg-slate-900 border-r border-white/10 overflow-y-auto p-3 flex flex-col">
+            <div className="w-72 bg-white border-r border-[#E5E2DC] overflow-y-auto p-3 flex flex-col shadow-lg">
               <button
                 onClick={() => setMobileHistoryOpen(false)}
-                className="text-xs text-slate-400 hover:text-white mb-3 text-left"
+                className="text-xs text-slate-500 hover:text-slate-900 mb-3 text-left"
               >
                 ← Close
               </button>
               {history.length === 0 ? (
-                <p className="text-xs text-slate-600 text-center mt-10">No history yet</p>
+                <p className="text-xs text-slate-400 text-center mt-10">No history yet</p>
               ) : (
                 history.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => handleHistorySelect(item)}
-                    className="w-full text-left text-xs text-slate-300 bg-slate-800/50 rounded-lg p-3 mb-1 hover:bg-slate-700 transition-colors"
+                    className="w-full text-left text-xs text-slate-700 bg-[#F1EFE9] rounded-lg p-3 mb-1 hover:bg-[#E5E2DC] transition-colors"
                   >
-                    <p className="text-slate-500 mb-1">{new Date(item.timestamp).toLocaleTimeString()}</p>
+                    <p className="text-slate-400 mb-1">{new Date(item.timestamp).toLocaleTimeString()}</p>
                     <p className="truncate">{item.prompt}</p>
                   </button>
                 ))
               )}
             </div>
-            <div className="flex-1 bg-black/40" onClick={() => setMobileHistoryOpen(false)} />
+            <div className="flex-1 bg-black/20" onClick={() => setMobileHistoryOpen(false)} />
           </div>
         )}
 
         {/* Panel 2: Main interaction — response area top, input pinned bottom */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className={`flex-1 flex-col min-w-0 overflow-hidden ${activeTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
           {/* Scrollable response area */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
             {/* Guided demo tour overlay */}
@@ -325,7 +345,7 @@ export function AppPage() {
             {response && <RoutingFlow response={response} />}
 
             {error && (
-              <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 text-sm text-red-400">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-600">
                 {error}
               </div>
             )}
@@ -343,7 +363,9 @@ export function AppPage() {
         </div>
 
         {/* Panel 3: Dashboard */}
-        <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} causalAnalysis={causalAnalysis} />
+        <div className={`${activeTab !== 'dashboard' ? 'hidden lg:block' : 'block'} flex-shrink-0`}>
+          <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} causalAnalysis={causalAnalysis} />
+        </div>
       </div>
     </div>
   )
