@@ -126,7 +126,7 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
     .map(([name, value]) => ({ name, value }))
 
   return (
-    <div className="w-[360px] flex-shrink-0 space-y-4 overflow-y-auto">
+    <div className="w-full lg:w-[360px] flex-1 min-h-0 space-y-4 overflow-y-auto">
 
       {/* ── A: Live Routing Trace ─────────────────────────────────────────── */}
       <div className="bg-white border border-[#E5E2DC] shadow-sm rounded-xl p-4">
