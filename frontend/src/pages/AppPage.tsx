@@ -215,6 +215,7 @@ export function AppPage() {
     setPrompt(item.prompt)
     setSelectedHistoryId(item.id)
     setMobileHistoryOpen(false)
+    setStreamStages([])
   }
 
   return (
