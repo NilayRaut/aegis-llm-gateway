@@ -216,6 +216,7 @@ export function AppPage() {
     setSelectedHistoryId(item.id)
     setMobileHistoryOpen(false)
     setStreamStages([])
+    setError('')
   }
 
   return (
