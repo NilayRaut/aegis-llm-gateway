@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Shield, TrendingDown, Zap, AlertTriangle, Play, ArrowRight } from 'lucide-react'
+import { AegisLogo } from '../components/AegisLogo'
 
 const STATS = [
   { value: '5', label: 'LLM providers' },
@@ -62,7 +63,7 @@ export function LandingPage() {
       <nav className="sticky top-0 z-20 border-b border-[#E5E2DC] bg-white/95 backdrop-blur-md shadow-sm">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="w-6 h-6 text-emerald-600" />
+            <AegisLogo size={24} />
             <span className="font-bold text-slate-900 tracking-tight text-lg font-heading">Aegis</span>
           </div>
           <button
@@ -197,7 +198,7 @@ export function LandingPage() {
       <footer className="border-t border-[#E5E2DC] bg-white">
         <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-emerald-600" />
+            <AegisLogo size={16} />
             <span className="text-sm text-slate-400">Aegis — INFO 7390 · Spring 2026</span>
           </div>
           <span className="text-xs text-slate-300">LangGraph · FastAPI · React · Vercel · Render</span>

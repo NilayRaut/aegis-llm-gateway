@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Shield, Menu } from 'lucide-react'
+import { Menu } from 'lucide-react'
+import { AegisLogo } from '../components/AegisLogo'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, StreamStage } from '../types'
 import { DemoTour, TOUR_STEPS } from '../components/DemoTour'
@@ -229,7 +230,7 @@ export function AppPage() {
               <Menu className="w-4 h-4" />
             </button>
             <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <Shield className="w-7 h-7 text-emerald-600" />
+              <AegisLogo size={28} />
               <div className="text-left">
                 <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none font-heading">Aegis</h1>
                 <p className="text-xs text-slate-400 leading-none">Agentic LLM Gateway</p>

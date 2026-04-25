@@ -487,13 +487,13 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
         {riskChartData.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-8">No data yet</p>
         ) : (
-          <div style={{ height: 160 }} className="relative">
+          <div style={{ height: 220 }} className="relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={riskChartData}
                   cx="50%"
-                  cy="50%"
+                  cy="44%"
                   innerRadius={44}
                   outerRadius={64}
                   paddingAngle={3}
