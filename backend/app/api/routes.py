@@ -241,6 +241,7 @@ async def chat_stream(request: PromptRequest):
                     risk_level="HIGH", security_blocked=True,
                     security_reason=security_result.reason or "Security policy violation",
                 )
+                yield _evt("status", stage=1, label="Security Gate", message=security_result.reason, done=True)
                 yield _evt("error", message=security_result.reason, stage="security")
                 return
 
