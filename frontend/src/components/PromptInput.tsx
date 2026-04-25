@@ -1,19 +1,38 @@
-import { Send } from 'lucide-react'
+import { useState } from 'react'
+import { Send, BookOpen } from 'lucide-react'
 import { DEMO_PROMPTS } from '../types'
+import { PromptLibrary } from './PromptLibrary'
 
 interface Props {
   prompt: string
   loading: boolean
   onPromptChange: (value: string) => void
   onSubmit: (e: React.FormEvent) => void
+  onAutoSubmit?: (prompt: string) => void
 }
 
-export function PromptInput({ prompt, loading, onPromptChange, onSubmit }: Props) {
+export function PromptInput({ prompt, loading, onPromptChange, onSubmit, onAutoSubmit }: Props) {
+  const [libraryOpen, setLibraryOpen] = useState(false)
+
+  const handleLibrarySelect = (p: string) => {
+    onPromptChange(p)
+    if (onAutoSubmit) onAutoSubmit(p)
+  }
+
   return (
     <div className="bg-white border-t border-[#E5E2DC] px-4 py-3 flex-shrink-0">
-      {/* Demo prompt chips */}
+      {/* Demo chips + browse button */}
       <div className="mb-2">
-        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Try a demo:</p>
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide">Try a demo:</p>
+          <button
+            onClick={() => setLibraryOpen(true)}
+            className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
+          >
+            <BookOpen className="w-3 h-3" />
+            Browse all 40 prompts →
+          </button>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {DEMO_PROMPTS.map(({ label, prompt: p, tooltip }) => (
             <button
@@ -54,6 +73,13 @@ export function PromptInput({ prompt, loading, onPromptChange, onSubmit }: Props
           )}
         </button>
       </form>
+
+      {libraryOpen && (
+        <PromptLibrary
+          onSelect={handleLibrarySelect}
+          onClose={() => setLibraryOpen(false)}
+        />
+      )}
     </div>
   )
 }
