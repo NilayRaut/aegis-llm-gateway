@@ -360,6 +360,7 @@ export function AppPage() {
             loading={loading}
             onPromptChange={setPrompt}
             onSubmit={handleSubmit}
+            onAutoSubmit={doSubmit}
           />
         </div>
 
