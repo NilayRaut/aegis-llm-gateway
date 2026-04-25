@@ -277,14 +277,16 @@ async def chat_stream(request: PromptRequest):
 
             yield _evt("status", stage=2, label="Semantic Cache", message="Miss — no similar query found", done=True)
 
-            # Stage 3 — Complexity scoring + routing decision
+            # Stage 3 — Complexity scoring
             forced = security_result.forced_model
             if forced:
-                yield _evt("status", stage=3, label="Domain Gate", message=f"Sensitive domain — hard-routing to {forced}")
+                yield _evt("status", stage=3, label="Complexity Classifier",
+                           message=f"Domain gate active — bypassing classifier")
             else:
-                yield _evt("status", stage=3, label="Complexity Classifier", message="Scoring prompt across 4 factors…")
+                yield _evt("status", stage=3, label="Complexity Classifier",
+                           message="Scoring prompt across 4 factors…")
 
-            # Stage 4 — LLM call (router runs classify + route + call internally)
+            # Router runs classify + route + LLM call internally
             result = await router_agent.process(
                 prompt=request.prompt,
                 context=request.context,
@@ -295,15 +297,26 @@ async def chat_stream(request: PromptRequest):
                 yield _evt("error", message=result["error"])
                 return
 
-            model_label = result["model_used"]
             score_label = f"{result.get('complexity_score', 0):.2f}"
-            yield _evt("status", stage=3, label="Routing Decision",
-                       message=f"Score {score_label} → {model_label}", done=True)
-            yield _evt("status", stage=4, label="LLM Call",
+            model_label = result["model_used"]
+
+            yield _evt("status", stage=3, label="Complexity Classifier",
+                       message=f"Score {score_label}", done=True)
+
+            # Stage 4 — Routing decision
+            if forced:
+                yield _evt("status", stage=4, label="Domain Gate",
+                           message=f"Hard-routed to {forced} (sensitive domain)", done=True)
+            else:
+                yield _evt("status", stage=4, label="Routing Decision",
+                           message=f"Routed to {model_label}", done=True)
+
+            # Stage 5 — LLM call result
+            yield _evt("status", stage=5, label="LLM Call",
                        message=f"Response in {result['latency_ms']}ms", done=True)
 
-            # Stage 5 — Hallucination check
-            yield _evt("status", stage=5, label="Hallucination Check", message="Running paraphrase variance test…")
+            # Stage 6 — Hallucination check
+            yield _evt("status", stage=6, label="Hallucination Check", message="Running paraphrase variance test…")
             detection = await hallucination_detector.analyze(
                 prompt=request.prompt, response=result["response"],
                 model=result["model_used"], provider=result.get("provider", "openai"),
@@ -312,10 +325,10 @@ async def chat_stream(request: PromptRequest):
             )
             risk_level = _merge_risk(risk_level, detection.is_hallucination, detection.pathway)
             risk_msg = f"Risk: {risk_level}" + (" — HIGH variance flagged" if detection.is_hallucination else "")
-            yield _evt("status", stage=5, label="Hallucination Check", message=risk_msg, done=True)
+            yield _evt("status", stage=6, label="Hallucination Check", message=risk_msg, done=True)
 
-            # Stage 6 — Cache store + DB log
-            yield _evt("status", stage=6, label="Audit Log", message="Logging cost, latency, risk to SQLite…")
+            # Stage 7 — Cache store + DB log
+            yield _evt("status", stage=7, label="Audit Log", message="Logging cost, latency, risk to SQLite…")
             if not detection.is_hallucination:
                 semantic_cache.add(request.prompt, result)
             await db.log_request(
@@ -325,7 +338,7 @@ async def chat_stream(request: PromptRequest):
                 complexity_score=result.get("complexity_score", 0.0),
                 domain=domain, cache_hit=False, risk_level=risk_level, security_blocked=False,
             )
-            yield _evt("status", stage=6, label="Audit Log", message="Logged", done=True)
+            yield _evt("status", stage=7, label="Audit Log", message="Logged", done=True)
 
             # Done — emit full response
             routing_decision = RoutingDecision(
