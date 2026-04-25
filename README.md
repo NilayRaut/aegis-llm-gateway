@@ -68,6 +68,26 @@ Incoming Prompt
 Response + causal_analysis { is_hallucination, confidence, explanation, pathway }
 ```
 
+```mermaid
+flowchart TD
+    A([User Prompt]) --> B[1 Security Gate]
+    B -->|PII / injection detected| E1([400 Blocked])
+    B -->|Cleared| C[2 Semantic Cache]
+    C -->|Hit ≥0.85 cosine| E2([Return Cached · $0.00])
+    C -->|Miss| D[3 Complexity Classifier\n0.00–1.00 score]
+    D --> F[4 Domain Hard Gate]
+    F -->|legal / medical / financial| G1[Force GPT-4o]
+    F -->|Other| G2[Route by tier\nLlama → Gemini → Haiku → GPT-4o-mini → GPT-4o]
+    G1 --> H[5 LLM Call]
+    G2 --> H
+    H --> I[6 Causal Risk Check\nTier 1 · Tier 3 paraphrase variance]
+    I -->|variance > θ=0.35| J1([HIGH flag])
+    I -->|variance ≤ θ=0.35| J2([SAFE])
+    J1 --> K[7 SQLite Log]
+    J2 --> K
+    K --> L([Response + Risk Level])
+```
+
 ---
 
 ## Model Pool
@@ -75,8 +95,8 @@ Response + causal_analysis { is_hallucination, confidence, explanation, pathway 
 | Score Range | Primary Model | Alternate | Cost per 1M Tokens |
 |-------------|---------------|-----------|-------------------|
 | 0.00–0.20 | Llama 3.1 8B (Groq) | — | $0.00 |
-| 0.20–0.45 | Gemini 1.5 Flash | Claude 3.5 Haiku | $0.075 |
-| 0.45–0.65 | Claude 3.5 Haiku | Gemini 1.5 Flash | $0.250 |
+| 0.20–0.45 | Gemini 2.0 Flash | Claude 3.5 Haiku | $0.075 |
+| 0.45–0.65 | Claude 3.5 Haiku | Gemini 2.0 Flash | $0.250 |
 | 0.65–0.80 | GPT-4o-mini | Claude 3.5 Haiku | $0.150 |
 | 0.80–1.00 | GPT-4o | — | $2.500 |
 
@@ -317,7 +337,7 @@ SQLite database is ephemeral on Render — reseeded with 50 demo records on each
 | [1] Security Gate | Prevent harm before any model call | Deterministic rules — PII and injection must be caught 100%, not probabilistically |
 | [2] Semantic Cache | Eliminate duplicate API costs | Cosine similarity ≥ 0.85 catches paraphrases that keyword caches miss |
 | [3] Complexity Classifier | Route simple queries to cheap models | 4-factor weighted score; question type weighted 0.35 (dominant signal for model tier) |
-| [4] Domain Hard Gate | Sensitive domains require safest model, unconditionally | Runs before complexity classifier; cannot be overridden by any other factor |
+| [4] Domain Hard Gate | Sensitive domains (legal, medical, financial) require the highest-safety model unconditionally — misrouting a legal or medical query to a cheaper model creates liability risk and potential patient/user harm that cost savings cannot justify | Runs before complexity classifier; cannot be overridden by any other factor |
 | [5] LLM Call | Get a response from the routed model | Async with 3-retry + exponential backoff; provider rotation distributes load |
 | [6] Causal Risk Check | Flag responses that may be hallucinations, without ground truth | Paraphrase variance (Pearl Rung 2 intervention): `do(rephrase(X))` |
 | [7] SQLite Log | Observable, auditable, cost-trackable system | Every request logged with cost, model, latency, domain, risk level |
