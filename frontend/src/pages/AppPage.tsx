@@ -363,7 +363,7 @@ export function AppPage() {
         </div>
 
         {/* Panel 3: Dashboard */}
-        <div className={`${activeTab !== 'dashboard' ? 'hidden lg:block' : 'block'} flex-shrink-0`}>
+        <div className={`${activeTab !== 'dashboard' ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-auto flex-shrink-0 min-h-0`}>
           <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} causalAnalysis={causalAnalysis} />
         </div>
       </div>
