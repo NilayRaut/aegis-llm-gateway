@@ -54,27 +54,27 @@ export function DemoTour({ step, loading, onNext, onExit }: Props) {
   const isLast = step === TOUR_STEPS.length - 1
 
   return (
-    <div className="bg-indigo-950/80 border border-indigo-500/40 rounded-xl p-4 backdrop-blur-sm ring-1 ring-indigo-500/20">
+    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex-shrink-0">
             {step + 1}
           </span>
-          <p className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">{current.title}</p>
+          <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">{current.title}</p>
         </div>
         <button
           onClick={onExit}
-          className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0"
+          className="text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <p className="text-sm text-slate-200 mb-2 leading-relaxed">{current.description}</p>
+      <p className="text-sm text-slate-700 mb-2 leading-relaxed">{current.description}</p>
 
-      <div className="bg-slate-900/60 rounded-lg px-3 py-2 mb-3">
-        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Watch for</p>
-        <p className="text-xs text-indigo-300 font-mono leading-relaxed">{current.watchFor}</p>
+      <div className="bg-white border border-[#E5E2DC] rounded-lg px-3 py-2 mb-3">
+        <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-0.5">Watch for</p>
+        <p className="text-xs text-indigo-700 font-mono leading-relaxed">{current.watchFor}</p>
       </div>
 
       <div className="flex items-center justify-between">
@@ -82,7 +82,7 @@ export function DemoTour({ step, loading, onNext, onExit }: Props) {
           {TOUR_STEPS.map((_, i) => (
             <span
               key={i}
-              className={`w-1.5 h-1.5 rounded-full transition-colors ${i === step ? 'bg-indigo-400' : 'bg-slate-700'}`}
+              className={`w-1.5 h-1.5 rounded-full transition-colors ${i === step ? 'bg-indigo-500' : 'bg-slate-300'}`}
             />
           ))}
         </div>
@@ -90,7 +90,7 @@ export function DemoTour({ step, loading, onNext, onExit }: Props) {
         <button
           onClick={onNext}
           disabled={loading}
-          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white transition-colors"
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:cursor-not-allowed text-white disabled:text-slate-400 transition-colors"
         >
           {loading ? (
             <span className="animate-spin text-sm">⏳</span>
@@ -115,25 +115,25 @@ interface IntroCardProps {
 
 export function IntroCard({ onDismiss, onStartTour }: IntroCardProps) {
   return (
-    <div className="bg-slate-800/60 border border-white/8 rounded-xl p-4 backdrop-blur-sm">
+    <div className="bg-white border border-[#E5E2DC] shadow-sm rounded-xl p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
-        <p className="text-sm font-semibold text-white">What is Aegis?</p>
-        <button onClick={onDismiss} className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0">
+        <p className="text-sm font-semibold text-slate-900">What is Aegis?</p>
+        <button onClick={onDismiss} className="text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
       <ul className="space-y-1.5 mb-4">
-        <li className="flex items-start gap-2 text-xs text-slate-300">
-          <span className="text-emerald-400 mt-0.5 flex-shrink-0">→</span>
-          <span><strong className="text-white">Cost routing:</strong> Scores each prompt's complexity and routes it to the cheapest capable model — from free Llama to GPT-4o.</span>
+        <li className="flex items-start gap-2 text-xs text-slate-600">
+          <span className="text-emerald-600 mt-0.5 flex-shrink-0">→</span>
+          <span><strong className="text-slate-900">Cost routing:</strong> Scores each prompt's complexity and routes it to the cheapest capable model — from free Llama to GPT-4o.</span>
         </li>
-        <li className="flex items-start gap-2 text-xs text-slate-300">
-          <span className="text-emerald-400 mt-0.5 flex-shrink-0">→</span>
-          <span><strong className="text-white">Hallucination detection:</strong> Paraphrases your prompt and checks if the model's response is stable — unstable responses are flagged HIGH risk.</span>
+        <li className="flex items-start gap-2 text-xs text-slate-600">
+          <span className="text-emerald-600 mt-0.5 flex-shrink-0">→</span>
+          <span><strong className="text-slate-900">Hallucination detection:</strong> Paraphrases your prompt and checks if the model's response is stable — unstable responses are flagged HIGH risk.</span>
         </li>
-        <li className="flex items-start gap-2 text-xs text-slate-300">
-          <span className="text-emerald-400 mt-0.5 flex-shrink-0">→</span>
-          <span><strong className="text-white">Security gate + cache:</strong> Blocks PII and injection attempts. Repeating a question serves a cached answer in ~5ms at $0.00.</span>
+        <li className="flex items-start gap-2 text-xs text-slate-600">
+          <span className="text-emerald-600 mt-0.5 flex-shrink-0">→</span>
+          <span><strong className="text-slate-900">Security gate + cache:</strong> Blocks PII and injection attempts. Repeating a question serves a cached answer in ~5ms at $0.00.</span>
         </li>
       </ul>
       <div className="flex items-center gap-2">
@@ -143,7 +143,7 @@ export function IntroCard({ onDismiss, onStartTour }: IntroCardProps) {
         >
           <Play className="w-3 h-3" /> Start Demo Tour
         </button>
-        <button onClick={onDismiss} className="text-xs text-slate-500 hover:text-slate-400 transition-colors">
+        <button onClick={onDismiss} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
           Dismiss
         </button>
       </div>

@@ -7,33 +7,33 @@ interface Props {
 interface Step {
   label: string
   value: string
-  color: string    // Tailwind text color
-  bg: string       // Tailwind bg color
-  border: string   // Tailwind border color
+  color: string
+  bg: string
+  border: string
   active: boolean
 }
 
 function complexityColor(score: number): { text: string; bg: string; border: string } {
-  if (score < 0.35) return { text: 'text-emerald-300', bg: 'bg-emerald-900/40', border: 'border-emerald-600/50' }
-  if (score < 0.65) return { text: 'text-amber-300',   bg: 'bg-amber-900/40',   border: 'border-amber-600/50' }
-  return              { text: 'text-red-300',     bg: 'bg-red-900/40',     border: 'border-red-600/50' }
+  if (score < 0.35) return { text: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-200' }
+  if (score < 0.65) return { text: 'text-amber-700',   bg: 'bg-amber-100',   border: 'border-amber-200' }
+  return              { text: 'text-red-700',     bg: 'bg-red-100',     border: 'border-red-200' }
 }
 
 const RISK_STYLE: Record<string, { text: string; bg: string; border: string }> = {
-  SAFE:   { text: 'text-emerald-300', bg: 'bg-emerald-900/40', border: 'border-emerald-600/50' },
-  MEDIUM: { text: 'text-amber-300',   bg: 'bg-amber-900/40',   border: 'border-amber-600/50' },
-  HIGH:   { text: 'text-red-300',     bg: 'bg-red-900/40',     border: 'border-red-600/50' },
+  SAFE:   { text: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-200' },
+  MEDIUM: { text: 'text-amber-700',   bg: 'bg-amber-100',   border: 'border-amber-200' },
+  HIGH:   { text: 'text-red-700',     bg: 'bg-red-100',     border: 'border-red-200' },
 }
 
 function buildSteps(response: LLMResponse | null): Step[] {
   if (!response) {
     return [
-      { label: 'Input',      value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
-      { label: 'Security',   value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
-      { label: 'Cache',      value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
-      { label: 'Classifier', value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
-      { label: 'Model',      value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
-      { label: 'Risk',       value: '—',       color: 'text-slate-400', bg: 'bg-slate-800/40',  border: 'border-slate-700/40', active: false },
+      { label: 'Input',      value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
+      { label: 'Security',   value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
+      { label: 'Cache',      value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
+      { label: 'Classifier', value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
+      { label: 'Model',      value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
+      { label: 'Risk',       value: '—', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-200', active: false },
     ]
   }
 
@@ -58,25 +58,25 @@ function buildSteps(response: LLMResponse | null): Step[] {
     {
       label: 'Input',
       value: '✓',
-      color: 'text-slate-300',
-      bg: 'bg-slate-800/60',
-      border: 'border-slate-600/50',
+      color: 'text-slate-700',
+      bg: 'bg-slate-100',
+      border: 'border-slate-200',
       active: true,
     },
     {
       label: 'Security',
       value: '✓ Pass',
-      color: 'text-emerald-300',
-      bg: 'bg-emerald-900/30',
-      border: 'border-emerald-700/50',
+      color: 'text-emerald-700',
+      bg: 'bg-emerald-100',
+      border: 'border-emerald-200',
       active: true,
     },
     {
       label: 'Cache',
       value: cacheHit ? 'HIT' : 'MISS',
-      color: cacheHit ? 'text-amber-300' : 'text-slate-400',
-      bg: cacheHit ? 'bg-amber-900/30' : 'bg-slate-800/40',
-      border: cacheHit ? 'border-amber-700/50' : 'border-slate-700/40',
+      color: cacheHit ? 'text-amber-700' : 'text-slate-500',
+      bg: cacheHit ? 'bg-amber-100' : 'bg-slate-100',
+      border: cacheHit ? 'border-amber-200' : 'border-slate-200',
       active: true,
     },
     {
@@ -90,9 +90,9 @@ function buildSteps(response: LLMResponse | null): Step[] {
     {
       label: 'Model',
       value: modelShort,
-      color: 'text-white',
-      bg: modelColor + '22',
-      border: modelColor + '55',
+      color: 'text-slate-900',
+      bg: modelColor + '18',
+      border: modelColor + '44',
       active: true,
     },
     {
@@ -110,14 +110,14 @@ export function RoutingFlow({ response }: Props) {
   const steps = buildSteps(response)
 
   return (
-    <div className="bg-slate-800/40 backdrop-blur-sm rounded-xl border border-white/5 ring-1 ring-white/5 p-4">
+    <div className="bg-white border border-[#E5E2DC] shadow-sm rounded-xl p-4">
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Decision Pipeline</h3>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Decision Pipeline</h3>
         {!response && (
-          <span className="text-[10px] text-slate-600">Awaiting request</span>
+          <span className="text-[10px] text-slate-400">Awaiting request</span>
         )}
       </div>
-      <p className="text-[10px] text-slate-600 mb-3">
+      <p className="text-[10px] text-slate-400 mb-3">
         Live trace of security, deduplication, complexity routing, and reliability verification stages.
       </p>
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
@@ -126,18 +126,18 @@ export function RoutingFlow({ response }: Props) {
             {/* Step pill */}
             <div
               className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-center transition-all duration-300 min-w-[56px] ${
-                step.active ? `${step.bg} ${step.border}` : 'bg-slate-900/30 border-slate-800/40 opacity-40'
+                step.active ? `${step.bg} ${step.border}` : 'bg-slate-100 border-slate-200 opacity-40'
               }`}
               style={{ transitionDelay: `${i * 60}ms` }}
             >
-              <span className="text-xs text-slate-500 leading-none mb-0.5">{step.label}</span>
-              <span className={`text-xs font-semibold leading-none ${step.active ? step.color : 'text-slate-600'}`}>
+              <span className="text-xs text-slate-400 leading-none mb-0.5">{step.label}</span>
+              <span className={`text-xs font-semibold leading-none ${step.active ? step.color : 'text-slate-400'}`}>
                 {step.value}
               </span>
             </div>
             {/* Arrow connector */}
             {i < steps.length - 1 && (
-              <span className={`text-xs ${step.active ? 'text-slate-500' : 'text-slate-700'}`}>›</span>
+              <span className={`text-xs ${step.active ? 'text-slate-400' : 'text-slate-300'}`}>›</span>
             )}
           </div>
         ))}
