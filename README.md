@@ -130,7 +130,7 @@ Dashboard pre-seeded with 50 realistic demo requests on first startup — real d
 - Python 3.11+, Node.js 18+
 - OpenAI API key (required — GPT-4o-mini + GPT-4o)
 - Anthropic API key (Claude 3.5 Haiku)
-- Google API key (Gemini 1.5 Flash)
+- Google API key (Gemini 2.5 Flash)
 - Groq API key (Llama 3.1 8B — free tier available)
 - Ollama with `llama3.1` pulled locally (optional — falls back to Groq automatically)
 
@@ -185,9 +185,9 @@ Routing table (list-of-pools with provider rotation):
 ```python
 ROUTING_TABLE = [
     (0.20, [("llama-3.1-8b-instant", "groq")]),
-    (0.45, [("gemini-1.5-flash", "google"), ("claude-3-5-haiku-20241022", "anthropic")]),
-    (0.65, [("claude-3-5-haiku-20241022", "anthropic"), ("gemini-1.5-flash", "google")]),
-    (0.80, [("gpt-4o-mini", "openai"), ("claude-3-5-haiku-20241022", "anthropic")]),
+    (0.45, [("gemini-2.5-flash", "google"), ("claude-haiku-4-5-20251001", "anthropic")]),
+    (0.65, [("claude-haiku-4-5-20251001", "anthropic"), ("gemini-2.5-flash", "google")]),
+    (0.80, [("gpt-4o-mini", "openai"), ("claude-haiku-4-5-20251001", "anthropic")]),
     (1.01, [("gpt-4o", "openai")]),
 ]
 # route()             → returns pool[0] (deterministic, used in tests)
@@ -327,8 +327,8 @@ SQLite database is ephemeral on Render — reseeded with 50 demo records on each
 ## Scope Boundaries
 
 - This is not a fact-checking or retrieval system — no external knowledge base is queried.
-- The variance threshold (θ = 0.35) is an operationally motivated heuristic set at the midpoint of the observed variance gap (factual queries mean ≈ 0.15; hallucination-prone queries mean ≈ 0.48). It is not validated by ROC analysis.
-- A live DoWhy causal analysis (`/api/causal-analysis`) validates that domain classification causally affects routing cost — this runs on logged request data, not in the request path.
+- The variance threshold (θ = 0.35) is an operationally motivated heuristic evaluated on a 30-sample labeled set (15 factual, 15 hallucination-prone): combined detector precision 0.82, recall 0.60, F1 0.69; Tier 3 alone achieves precision 0.67 at θ = 0.35. The F1-optimal threshold on this set is θ = 0.40 (precision 1.00, F1 0.62); θ = 0.35 is deployed to bias toward higher recall.
+- A post-hoc DoWhy causal analysis (`/api/causal-analysis`) estimates that domain classification is associated with higher routing cost independently of complexity score — this is a telemetry analytics feature invoked on-demand, not a per-request inference step, and it validates the routing layer rather than the hallucination detector.
 - This system is not a replacement for human review in regulated domains.
 
 ---
