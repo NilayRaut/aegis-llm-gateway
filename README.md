@@ -65,7 +65,7 @@ Incoming Prompt
       |
 [5] Log to SQLite (cost, model, provider, latency, risk_level, cache_hit, domain)
       |
-Response + causal_analysis { is_hallucination, confidence, explanation, pathway }
+Response + causal_analysis { is_hallucination, confidence, explanation, pathway, variance_score }
 ```
 
 ```mermaid
@@ -228,9 +228,11 @@ r1, r2 = await asyncio.gather(query(p1, model, temp=0), query(p2, model, temp=0)
 # stochastic and deterministic outputs.
 variance = 1 - cosine_similarity(embed(r1), embed(r2))
 
-if variance > 0.35:   # θ empirically set; validated via /api/causal-analysis
+if variance > 0.35:   # θ heuristic midpoint; post-hoc consistent via /api/causal-analysis
     return HIGH_RISK  # pathway="paraphrase_variance"
 ```
+
+Both `pathway` (`"paraphrase_variance"` | `"linguistic_uncertainty"` | `"epistemic_uncertainty"`) and `variance_score` (raw float 0–1, only set when Tier 3 runs) are included in the `causal_analysis` object of all `/api/chat` and `/api/chat/stream` responses.
 
 Tier 3 failures (API errors, insufficient paraphrases) degrade gracefully to Tier 1 result.
 
@@ -249,6 +251,7 @@ Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/chat` | POST | Full pipeline: security → cache → route → hallucination check → log → respond |
+| `/api/chat/stream` | POST | SSE streaming: emits pipeline stage events (`status`) then final response (`done`) |
 | `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
 | `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
 | `/api/history` | GET | Last N request records from SQLite |
@@ -324,7 +327,7 @@ SQLite database is ephemeral on Render — reseeded with 50 demo records on each
 ## Scope Boundaries
 
 - This is not a fact-checking or retrieval system — no external knowledge base is queried.
-- The variance threshold (θ = 0.35) is fixed at runtime; empirically determined from observed variance distributions across prompt classes.
+- The variance threshold (θ = 0.35) is an operationally motivated heuristic set at the midpoint of the observed variance gap (factual queries mean ≈ 0.15; hallucination-prone queries mean ≈ 0.48). It is not validated by ROC analysis.
 - A live DoWhy causal analysis (`/api/causal-analysis`) validates that domain classification causally affects routing cost — this runs on logged request data, not in the request path.
 - This system is not a replacement for human review in regulated domains.
 
