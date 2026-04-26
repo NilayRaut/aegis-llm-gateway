@@ -97,6 +97,7 @@ class DetectionResult:
     confidence: float
     explanation: str
     pathway: Optional[str] = None  # "linguistic_uncertainty" | "paraphrase_variance" | None
+    variance_score: Optional[float] = None  # raw paraphrase variance (only set by Tier 3)
 
 
 class HallucinationDetector:
@@ -275,6 +276,7 @@ class HallucinationDetector:
                     "indicating hallucination-prone output on this topic."
                 ),
                 pathway="paraphrase_variance",
+                variance_score=round(variance, 4),
             )
 
         return DetectionResult(
@@ -285,6 +287,7 @@ class HallucinationDetector:
                 "Response is stable across question phrasings."
             ),
             pathway=None,
+            variance_score=round(variance, 4),
         )
 
     async def analyze(
