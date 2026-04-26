@@ -88,7 +88,10 @@ function buildSteps(response: LLMResponse | null): Step[] {
       active: !cacheHit,
     },
     {
-      label: 'Model',
+      label: response.routing_decision.reason.toLowerCase().includes('domain override') ||
+             response.routing_decision.reason.toLowerCase().includes('hard-routed')
+               ? 'Forced ⚡'
+               : 'Model',
       value: modelShort,
       color: 'text-slate-900',
       bg: modelColor + '18',

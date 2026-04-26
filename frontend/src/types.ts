@@ -16,6 +16,8 @@ export interface CausalAnalysis {
   confidence: number
   is_hallucination: boolean
   explanation: string
+  pathway?: string
+  variance_score?: number
 }
 
 export interface LLMResponse {

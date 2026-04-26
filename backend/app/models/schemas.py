@@ -29,6 +29,7 @@ class CausalAnalysis(BaseModel):
     pathway: Optional[str] = Field(None, description="Identified causal pathway for hallucination")
     is_hallucination: bool = Field(..., description="Whether response is flagged as hallucination")
     explanation: str = Field(..., description="Human-readable explanation")
+    variance_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Raw paraphrase variance (Tier 3 only)")
 
 
 class LLMResponse(BaseModel):

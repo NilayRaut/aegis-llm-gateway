@@ -193,6 +193,7 @@ async def chat(request: PromptRequest):
             pathway=detection.pathway,
             is_hallucination=detection.is_hallucination,
             explanation=detection.explanation,
+            variance_score=detection.variance_score,
         )
 
         return LLMResponse(
