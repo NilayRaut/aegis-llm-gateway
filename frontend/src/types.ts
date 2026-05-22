@@ -75,17 +75,39 @@ export interface SecurityEvent {
   domain: string
 }
 
-export interface CausalAnalysisResult {
-  n?: number
-  n_sensitive_domain?: number
-  n_general?: number
-  causal_effect_usd?: number
-  placebo_effect_usd?: number
-  refutation_passed?: boolean
-  interpretation?: string
+export interface DomainCostBreakdownTier {
+  tier: 'low' | 'mid' | 'high' | 'top'
+  range: string
+  n_sensitive: number
+  n_general: number
+  avg_cost_sensitive: number | null
+  avg_cost_general: number | null
+  cost_delta: number | null
+}
+
+export interface DomainCostBreakdown {
+  n: number
+  n_sensitive_domain: number
+  n_general: number
+  tiers: DomainCostBreakdownTier[]
+  cost_delta_usd: number | null
+  avg_cost_sensitive: number | null
+  avg_cost_general: number | null
   method?: string
-  dag?: string
+  note?: string
   error?: string
+}
+
+export interface Tier3OverheadStats {
+  count: number
+  p50_ms: number | null
+  p95_ms: number | null
+  p99_ms: number | null
+  per_stage: {
+    paraphrase_gen_p50_ms: number | null
+    paraphrase_responses_p50_ms: number | null
+    embed_compute_p50_ms: number | null
+  }
 }
 
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow

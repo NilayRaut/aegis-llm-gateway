@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Menu } from 'lucide-react'
 import { AegisLogo } from '../components/AegisLogo'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, StreamStage } from '../types'
+import { LLMResponse, DashboardStats, HistoryItem, StoredHistory, ProviderHealth, ProviderTestResult, SecurityEvent, DomainCostBreakdown, Tier3OverheadStats, StreamStage } from '../types'
 import { DemoTour, TOUR_STEPS } from '../components/DemoTour'
 import { EmptyState } from '../components/EmptyState'
 import { StreamingStatus } from '../components/StreamingStatus'
@@ -69,15 +69,25 @@ export function AppPage() {
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | undefined>()
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
-  const [causalAnalysis, setCausalAnalysis] = useState<CausalAnalysisResult | null>(null)
+  const [domainCostBreakdown, setDomainCostBreakdown] = useState<DomainCostBreakdown | null>(null)
+  const [tier3Overhead, setTier3Overhead] = useState<Tier3OverheadStats | null>(null)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [streamStages, setStreamStages] = useState<StreamStage[]>([])
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
 
-  const fetchCausalAnalysis = async () => {
+  const fetchDomainCostBreakdown = async () => {
     try {
-      const res = await fetch('/api/causal-analysis')
-      if (res.ok) setCausalAnalysis(await res.json())
+      const res = await fetch('/api/domain-cost-breakdown')
+      if (res.ok) setDomainCostBreakdown(await res.json())
+    } catch {
+      // non-critical
+    }
+  }
+
+  const fetchTier3Overhead = async () => {
+    try {
+      const res = await fetch('/api/tier3-overhead')
+      if (res.ok) setTier3Overhead(await res.json())
     } catch {
       // non-critical
     }
@@ -100,8 +110,8 @@ export function AppPage() {
     }
   }
 
-  useEffect(() => { fetchStats(); fetchCausalAnalysis() }, [])
-  useEffect(() => { if (response) { fetchStats(); fetchCausalAnalysis() } }, [response])
+  useEffect(() => { fetchStats(); fetchDomainCostBreakdown(); fetchTier3Overhead() }, [])
+  useEffect(() => { if (response) { fetchStats(); fetchDomainCostBreakdown(); fetchTier3Overhead() } }, [response])
 
   useEffect(() => {
     const state = location.state as { startTour?: boolean } | null
@@ -368,7 +378,7 @@ export function AppPage() {
 
         {/* Panel 3: Dashboard */}
         <div className={`${activeTab !== 'dashboard' ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-auto flex-shrink-0 min-h-0`}>
-          <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} causalAnalysis={causalAnalysis} />
+          <Dashboard stats={stats} history={history} providerHealth={providerHealth} providerTest={providerTest} securityEvents={securityEvents} domainCostBreakdown={domainCostBreakdown} tier3Overhead={tier3Overhead} />
         </div>
       </div>
     </div>

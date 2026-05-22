@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts'
-import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, MODEL_COLORS } from '../types'
+import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, DomainCostBreakdown, Tier3OverheadStats, MODEL_COLORS } from '../types'
 import { useCountUp } from '../hooks/useCountUp'
 
 interface Props {
@@ -12,7 +12,8 @@ interface Props {
   providerHealth: ProviderHealth[]
   providerTest: Record<string, ProviderTestResult>
   securityEvents: SecurityEvent[]
-  causalAnalysis: CausalAnalysisResult | null
+  domainCostBreakdown: DomainCostBreakdown | null
+  tier3Overhead: Tier3OverheadStats | null
 }
 
 const TEST_BADGE: Record<string, { label: string; cls: string }> = {
@@ -55,7 +56,7 @@ const TooltipStyle = {
 
 const GPT4O_BASELINE = 0.0025
 
-export function Dashboard({ stats, history, providerHealth, providerTest, securityEvents, causalAnalysis }: Props) {
+export function Dashboard({ stats, history, providerHealth, providerTest, securityEvents, domainCostBreakdown, tier3Overhead }: Props) {
   const latest = history[0] ?? null
 
   const totalQueries = stats?.total_requests ?? 0
@@ -439,34 +440,44 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
           Domain Cost Breakdown
         </h3>
         <p className="text-[10px] text-slate-400 mb-3">
-          Subgroup cost breakdown by domain class — sensitive (legal/medical/financial) vs general — controlling for complexity tier.
+          Descriptive subgroup comparison — average cost for sensitive (legal/medical/financial) vs general queries, stratified by complexity tier. Not a causal estimate.
         </p>
-        {!causalAnalysis ? (
+        {!domainCostBreakdown ? (
           <p className="text-xs text-slate-400 text-center py-4">Loading…</p>
-        ) : causalAnalysis.error ? (
-          <p className="text-xs text-slate-500 text-center py-4">{causalAnalysis.error}</p>
+        ) : domainCostBreakdown.error ? (
+          <p className="text-xs text-slate-500 text-center py-4">{domainCostBreakdown.error}</p>
+        ) : domainCostBreakdown.cost_delta_usd === null ? (
+          <p className="text-xs text-slate-500 text-center py-4">{domainCostBreakdown.note ?? 'Not enough data yet.'}</p>
         ) : (
           <div className="space-y-2 text-xs">
             <div className="bg-[#F1EFE9] rounded-lg p-2.5">
               <p className="text-slate-500 mb-1 text-[10px]">Domain Cost Delta</p>
               <p className="text-slate-900 font-mono font-semibold">
-                +${((causalAnalysis.causal_effect_usd ?? 0)).toFixed(5)}/req
+                +${(domainCostBreakdown.cost_delta_usd ?? 0).toFixed(5)}/req
               </p>
             </div>
             <div className="flex gap-2">
               <div className="flex-1 bg-[#F1EFE9] rounded-lg p-2.5">
                 <p className="text-slate-500 mb-1 text-[10px]">Sensitive Requests</p>
-                <p className="text-amber-600 font-semibold font-mono">{causalAnalysis.n_sensitive_domain ?? 0}</p>
+                <p className="text-amber-600 font-semibold font-mono">{domainCostBreakdown.n_sensitive_domain}</p>
               </div>
               <div className="flex-1 bg-[#F1EFE9] rounded-lg p-2.5">
                 <p className="text-slate-500 mb-1 text-[10px]">Total Analyzed</p>
-                <p className="text-slate-700 font-semibold font-mono">{causalAnalysis.n ?? 0}</p>
+                <p className="text-slate-700 font-semibold font-mono">{domainCostBreakdown.n}</p>
               </div>
             </div>
             <div className="bg-[#F1EFE9] rounded-lg p-2.5">
               <p className="text-slate-500 mb-1 text-[10px]">Method</p>
-              <p className="text-slate-600 font-mono text-[10px]">subgroup_mean_comparison</p>
+              <p className="text-slate-600 font-mono text-[10px]">{domainCostBreakdown.method ?? 'subgroup_mean_comparison'}</p>
             </div>
+            {tier3Overhead && tier3Overhead.count > 0 && (
+              <div className="bg-[#F1EFE9] rounded-lg p-2.5 mt-1 border-t border-slate-200">
+                <p className="text-slate-500 mb-1 text-[10px]">Tier 3 Latency Overhead (last {tier3Overhead.count})</p>
+                <p className="text-slate-700 font-mono text-[10px]">
+                  p50 {tier3Overhead.p50_ms ?? '–'}ms · p95 {tier3Overhead.p95_ms ?? '–'}ms · p99 {tier3Overhead.p99_ms ?? '–'}ms
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
