@@ -104,7 +104,7 @@ flowchart TD
 - The variance threshold (θ = 0.35) is an operationally motivated heuristic, calibrated on a 30-sample pilot labeled set (15 factual, 15 hallucination-prone): combined detector precision 0.82, recall 0.60, F1 0.69; Tier 3 alone achieves precision 0.67 at θ = 0.35. This is a pilot for operational calibration, not a published evaluation — validation on public hallucination benchmarks (HaluEval, TruthfulQA) is in progress.
 - Paraphrase variance detects response *instability*, not factual incorrectness. A confidently wrong but internally consistent answer will not be flagged.
 - The cost-savings figure (40–60%) is computed against a worst-case GPT-4o-only baseline on a 50-record synthetic workload. Comparison against more realistic baselines (GPT-4o-mini-only, OpenRouter auto-routing) is future work.
-- The `/api/causal-analysis` endpoint reports a subgroup cost breakdown by domain class — it is descriptive telemetry, not a causal inference result.
+- The `/api/domain-cost-breakdown` endpoint reports a subgroup cost breakdown by domain class — it is descriptive telemetry, not a causal inference result.
 - This system is not a replacement for human review in regulated domains.
 
 ---
@@ -315,7 +315,7 @@ Load characteristics are not currently measured. A load test (`tests/load/locust
 | `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
 | `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
 | `/api/history` | GET | Last N request records from SQLite |
-| `/api/causal-analysis` | GET | Subgroup cost breakdown by domain class (sensitive vs general) controlling for complexity tier — descriptive telemetry, not a causal estimate |
+| `/api/domain-cost-breakdown` | GET | Subgroup cost breakdown by domain class (sensitive vs general) controlling for complexity tier — descriptive telemetry, not a causal estimate |
 | `/health` | GET | Backend health check |
 
 ---
