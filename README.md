@@ -314,8 +314,11 @@ Load characteristics are not currently measured. A load test (`tests/load/locust
 | `/api/chat/stream` | POST | SSE streaming: emits pipeline stage events (`status`) then final response (`done`) |
 | `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
 | `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
+| `/api/provider-test` | GET | Startup connectivity check per provider (`ok` / `not_configured` / `auth_error` / `unavailable` / `pending`) |
 | `/api/history` | GET | Last N request records from SQLite |
+| `/api/security/events` | GET | Recent security-blocked requests (`limit` param, capped at 50) |
 | `/api/domain-cost-breakdown` | GET | Subgroup cost breakdown by domain class (sensitive vs general) controlling for complexity tier — descriptive telemetry, not a causal estimate |
+| `/api/tier3-overhead` | GET | Tier 3 paraphrase-variance latency — p50/p95/p99 plus per-stage p50s over an in-memory ring buffer (resets on restart) |
 | `/health` | GET | Backend health check |
 
 ---
