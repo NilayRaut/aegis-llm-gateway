@@ -1,16 +1,21 @@
 """
-Post-hoc DoWhy causal analysis for the /api/causal-analysis endpoint.
+Domain-cost subgroup breakdown for the /api/domain-cost-breakdown endpoint.
 
-Causal question: Does domain classification (is_sensitive_domain) causally increase
-routing cost per request, after controlling for complexity score?
+Descriptive analytics — not causal inference. Reports the average per-request
+routing cost for sensitive-domain queries (legal/medical/financial) vs general
+queries, stratified by complexity tier.
 
-DAG:
-  complexity_score -> cost_usd
-  is_sensitive_domain -> cost_usd
-  is_sensitive_domain -> complexity_score   (confounder: sensitive queries may be complex)
+The domain hard-gate is deterministic: sensitive domains are unconditionally
+routed to gpt-4o. The cost delta is therefore mechanically expected by design
+of the routing rule. This endpoint exposes the magnitude of that delta as
+descriptive telemetry, not as a causal estimate — running formal causal
+inference on this signal would be circular, validating only that the code
+implements its own routing rule.
 
-Method: backdoor.linear_regression (sufficient for this DAG)
-Validation: placebo_treatment_refuter (permute treatment; real causal effect should drop)
+This module previously ran a DoWhy backdoor regression with a placebo refuter.
+The placebo refuter was removed for performance (commit e41b454), and the
+regression has now been replaced with a transparent pandas.groupby in line
+with the honest-framing pass.
 """
 
 import asyncio
@@ -19,29 +24,41 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_CAUSAL_GRAPH = """
-digraph {
-    complexity_score -> cost_usd;
-    is_sensitive_domain -> cost_usd;
-    is_sensitive_domain -> complexity_score;
-}
-"""
-
 _SENSITIVE_DOMAINS = {"legal", "medical", "financial"}
 
+# Complexity tier bands — match the live routing classifier in app/services/classifier.py
+_TIERS = [
+    ("low",  0.00, 0.45),
+    ("mid",  0.45, 0.65),
+    ("high", 0.65, 0.80),
+    ("top",  0.80, 1.01),
+]
 
-def _run_dowhy(rows: list[dict]) -> dict[str, Any]:
-    try:
-        import pandas as pd
-        from dowhy import CausalModel
-    except ImportError:
-        return {"error": "dowhy not installed", "n": len(rows)}
 
-    if len(rows) < 10:
-        return {"error": "Insufficient data — send at least 10 non-seeded requests first", "n": len(rows)}
+def _empty_result(note: str, n: int = 0, n_sensitive: int = 0, n_general: int = 0) -> dict[str, Any]:
+    return {
+        "n": n,
+        "n_sensitive_domain": n_sensitive,
+        "n_general": n_general,
+        "tiers": [],
+        "cost_delta_usd": None,
+        "avg_cost_sensitive": None,
+        "avg_cost_general": None,
+        "method": "subgroup_mean_comparison",
+        "note": note,
+    }
+
+
+def _compute_breakdown(rows: list[dict]) -> dict[str, Any]:
+    import pandas as pd
+
+    if not rows:
+        return _empty_result(
+            "No requests yet — make a few queries to populate the breakdown."
+        )
 
     df = pd.DataFrame(rows)
-    df["is_sensitive_domain"] = df["domain"].isin(_SENSITIVE_DOMAINS).astype(int)
+    df["is_sensitive_domain"] = df["domain"].isin(_SENSITIVE_DOMAINS)
     df["cost_usd"] = pd.to_numeric(df["cost_usd"], errors="coerce").fillna(0.0)
     df["complexity_score"] = pd.to_numeric(df["complexity_score"], errors="coerce").fillna(0.5)
 
@@ -49,49 +66,54 @@ def _run_dowhy(rows: list[dict]) -> dict[str, Any]:
     n_general = len(df) - n_sensitive
 
     if n_sensitive == 0 or n_general == 0:
-        return {
-            "error": "Need both sensitive-domain and general requests to estimate causal effect",
-            "n": len(df),
-            "n_sensitive_domain": n_sensitive,
-        }
+        return _empty_result(
+            f"Need both sensitive-domain and general requests to compute a delta. "
+            f"Currently {n_sensitive} sensitive, {n_general} general.",
+            n=len(df), n_sensitive=n_sensitive, n_general=n_general,
+        )
 
-    model = CausalModel(
-        data=df,
-        treatment="is_sensitive_domain",
-        outcome="cost_usd",
-        graph=_CAUSAL_GRAPH,
-    )
+    sensitive_mean = float(df.loc[df["is_sensitive_domain"], "cost_usd"].mean())
+    general_mean = float(df.loc[~df["is_sensitive_domain"], "cost_usd"].mean())
+    overall_delta = sensitive_mean - general_mean
 
-    estimand = model.identify_effect(proceed_when_unidentifiable=True)
-    estimate = model.estimate_effect(
-        estimand,
-        method_name="backdoor.linear_regression",
-    )
+    tiers: list[dict[str, Any]] = []
+    for name, lo, hi in _TIERS:
+        bin_df = df[(df["complexity_score"] >= lo) & (df["complexity_score"] < hi)]
+        s_rows = bin_df[bin_df["is_sensitive_domain"]]
+        g_rows = bin_df[~bin_df["is_sensitive_domain"]]
 
-    original_effect = float(estimate.value)
-    # Refutation passed heuristic: effect is non-trivial (sensitive domains cost more)
-    refutation_passed = original_effect > 1e-6
+        avg_s = float(s_rows["cost_usd"].mean()) if len(s_rows) > 0 else None
+        avg_g = float(g_rows["cost_usd"].mean()) if len(g_rows) > 0 else None
+        delta = (avg_s - avg_g) if (avg_s is not None and avg_g is not None) else None
+
+        tiers.append({
+            "tier": name,
+            "range": f"[{lo:.2f}, {hi:.2f})",
+            "n_sensitive": int(len(s_rows)),
+            "n_general": int(len(g_rows)),
+            "avg_cost_sensitive": round(avg_s, 6) if avg_s is not None else None,
+            "avg_cost_general": round(avg_g, 6) if avg_g is not None else None,
+            "cost_delta": round(delta, 6) if delta is not None else None,
+        })
 
     return {
         "n": len(df),
         "n_sensitive_domain": n_sensitive,
         "n_general": n_general,
-        "treatment": "is_sensitive_domain",
-        "outcome": "cost_usd",
-        "causal_effect_usd": round(original_effect, 6),
-        "refutation_passed": refutation_passed,
-        "interpretation": (
-            f"Sensitive-domain queries causally add ${original_effect:.5f}/request to routing cost "
-            f"after controlling for complexity score (n={len(df)}, "
-            f"sensitive={n_sensitive}, general={n_general}). "
-            f"Backdoor criterion satisfied via DAG: domain classification precedes and is not "
-            f"caused by complexity score."
+        "tiers": tiers,
+        "cost_delta_usd": round(overall_delta, 6),
+        "avg_cost_sensitive": round(sensitive_mean, 6),
+        "avg_cost_general": round(general_mean, 6),
+        "method": "subgroup_mean_comparison",
+        "note": (
+            f"Sensitive-domain queries cost ${overall_delta:.5f}/req more than general queries "
+            f"on average (n={len(df)}, sensitive={n_sensitive}, general={n_general}). "
+            f"This delta is mechanically expected by design — sensitive domains are unconditionally "
+            f"routed to gpt-4o by the hard-gate. Reported as descriptive telemetry, not a causal estimate."
         ),
-        "method": "DoWhy backdoor.linear_regression",
-        "dag": "complexity_score→cost_usd, is_sensitive_domain→cost_usd, is_sensitive_domain→complexity_score",
     }
 
 
-async def run_domain_cost_analysis(rows: list[dict]) -> dict[str, Any]:
-    """Run the DoWhy analysis in a thread (CPU-bound, blocks event loop)."""
-    return await asyncio.to_thread(_run_dowhy, rows)
+async def run_domain_cost_breakdown(rows: list[dict]) -> dict[str, Any]:
+    """Run the subgroup breakdown in a thread (pandas operations release the GIL)."""
+    return await asyncio.to_thread(_compute_breakdown, rows)

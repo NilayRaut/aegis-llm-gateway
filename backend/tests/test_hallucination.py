@@ -223,3 +223,47 @@ class TestAnalyzeTierSelection:
                 llm_client=MagicMock(),
             )
             mock_t3.assert_called_once()
+
+
+# ── Tier 3 overhead instrumentation ─────────────────────────────────────────
+
+class TestTier3OverheadStats:
+    def test_empty_buffer_returns_null_percentiles(self, detector):
+        detector._tier3_timings.clear()
+        stats = detector.get_tier3_overhead_stats()
+        assert stats["count"] == 0
+        assert stats["p50_ms"] is None
+        assert stats["p95_ms"] is None
+        assert stats["p99_ms"] is None
+        assert stats["per_stage"]["paraphrase_gen_p50_ms"] is None
+
+    def test_percentiles_computed_correctly(self, detector):
+        detector._tier3_timings.clear()
+        # Push 100 synthetic samples — total_ms spans 100..199, gen 10..109
+        for i in range(100):
+            detector._tier3_timings.append({
+                "total_ms": float(100 + i),
+                "paraphrase_gen_ms": float(10 + i),
+                "paraphrase_responses_ms": float(50 + i),
+                "embed_compute_ms": float(5 + i),
+            })
+        stats = detector.get_tier3_overhead_stats()
+        assert stats["count"] == 100
+        # Linear-interpolation percentiles on 100..199 → p50 ≈ 149.5, p95 ≈ 194.05, p99 ≈ 198.01
+        assert stats["p50_ms"] == pytest.approx(149.5, abs=0.1)
+        assert stats["p95_ms"] == pytest.approx(194.05, abs=0.1)
+        assert stats["p99_ms"] == pytest.approx(198.01, abs=0.1)
+
+    def test_ring_buffer_capped_at_max_size(self, detector):
+        from app.services.hallucination_detector import _TIER3_RING_SIZE
+        detector._tier3_timings.clear()
+        # Push more than the buffer size
+        for i in range(_TIER3_RING_SIZE + 50):
+            detector._tier3_timings.append({
+                "total_ms": float(i),
+                "paraphrase_gen_ms": float(i),
+                "paraphrase_responses_ms": float(i),
+                "embed_compute_ms": float(i),
+            })
+        # Should be capped at the configured size, oldest entries dropped
+        assert len(detector._tier3_timings) == _TIER3_RING_SIZE

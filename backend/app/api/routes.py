@@ -451,28 +451,42 @@ async def get_stats():
     )
 
 
-_causal_cache: dict = {}
-
-
-@router.get("/causal-analysis")
-async def get_causal_analysis():
+@router.get("/tier3-overhead")
+async def get_tier3_overhead():
     """
-    DoWhy backdoor causal analysis on logged request data.
+    Per-stage Tier 3 (paraphrase variance) latency overhead — p50/p95/p99 over
+    the most recent runs (in-memory ring buffer, resets on server restart).
+    Returns null fields when no Tier 3 runs have been recorded yet.
+    """
+    return hallucination_detector.get_tier3_overhead_stats()
 
-    Estimates the causal effect of domain classification (is_sensitive_domain)
-    on routing cost per request, controlling for complexity_score as a confounder.
-    Results are cached for 60 seconds to avoid re-running the analysis on every poll.
+
+_breakdown_cache: dict = {}
+
+
+@router.get("/domain-cost-breakdown")
+async def get_domain_cost_breakdown():
+    """
+    Descriptive subgroup breakdown of routing cost by domain class.
+
+    Reports average per-request cost for sensitive-domain queries
+    (legal/medical/financial) vs general queries, stratified by complexity
+    tier. The delta is mechanically expected by design (sensitive domains are
+    unconditionally routed to gpt-4o by the hard-gate) — this is descriptive
+    telemetry, not a causal estimate.
+
+    Results are cached for 60 seconds to avoid recomputing on every dashboard poll.
     """
     import time
-    from app.services.causal_analysis import run_domain_cost_analysis
+    from app.services.causal_analysis import run_domain_cost_breakdown
 
     now = time.time()
-    if _causal_cache.get("ts") and now - _causal_cache["ts"] < 60:
-        return _causal_cache["result"]
+    if _breakdown_cache.get("ts") and now - _breakdown_cache["ts"] < 60:
+        return _breakdown_cache["result"]
 
     rows = await db.get_all_requests_for_analysis()
-    result = await run_domain_cost_analysis(rows)
+    result = await run_domain_cost_breakdown(rows)
 
-    _causal_cache["ts"] = now
-    _causal_cache["result"] = result
+    _breakdown_cache["ts"] = now
+    _breakdown_cache["result"] = result
     return result

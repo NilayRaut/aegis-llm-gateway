@@ -143,6 +143,41 @@ class TestCacheHit:
         assert data["latency_ms"] == 5
 
 
+class TestDomainCostBreakdownEndpoint:
+    def test_endpoint_returns_200_with_empty_db(self, test_client):
+        # Bust the 60s cache by patching the module-level dict
+        with patch("app.api.routes._breakdown_cache", new={}):
+            resp = test_client.get("/api/domain-cost-breakdown")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["n"] == 0
+        assert data["cost_delta_usd"] is None
+        assert data["method"] == "subgroup_mean_comparison"
+
+    def test_endpoint_response_shape(self, test_client):
+        with patch("app.api.routes._breakdown_cache", new={}):
+            data = test_client.get("/api/domain-cost-breakdown").json()
+        for field in ("n", "n_sensitive_domain", "n_general", "tiers", "cost_delta_usd", "method", "note"):
+            assert field in data, f"Missing field: {field}"
+
+
+class TestTier3OverheadEndpoint:
+    def test_endpoint_returns_200(self, test_client):
+        resp = test_client.get("/api/tier3-overhead")
+        assert resp.status_code == 200
+
+    def test_endpoint_shape_with_no_runs(self, test_client):
+        # Fresh detector — no runs yet
+        from app.services.hallucination_detector import hallucination_detector
+        hallucination_detector._tier3_timings.clear()
+        data = test_client.get("/api/tier3-overhead").json()
+        assert data["count"] == 0
+        assert data["p50_ms"] is None
+        assert data["p95_ms"] is None
+        assert data["p99_ms"] is None
+        assert "per_stage" in data
+
+
 class TestHallucinationFlagging:
     def test_hallucination_flag_sets_risk_level(self, test_client):
         """When detector flags a hallucination, risk_level should be MEDIUM or HIGH."""

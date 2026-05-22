@@ -23,6 +23,8 @@ Two-tier detection strategy:
 
 import asyncio
 import logging
+import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
@@ -34,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 # Empirically determined variance threshold (factual <0.20, hallucination-prone >0.40)
 THETA: float = 0.35
+
+# Ring buffer for Tier 3 per-stage latency measurements (most-recent N runs).
+# Surfaced via /api/tier3-overhead so the dashboard can report p50/p95/p99
+# of the overhead Tier 3 adds on top of the base routing pipeline.
+_TIER3_RING_SIZE = 1000
+
+
+def _percentile(values: list[float], pct: float) -> Optional[float]:
+    if not values:
+        return None
+    s = sorted(values)
+    k = (len(s) - 1) * pct
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    if f == c:
+        return s[f]
+    return s[f] + (s[c] - s[f]) * (k - f)
 
 # Hedging phrases that correlate with hallucination-prone output
 HEDGING_PHRASES: list[str] = [
@@ -107,6 +126,38 @@ class HallucinationDetector:
     Instantiated once as a module-level singleton.
     Shares the all-MiniLM-L6-v2 embedder with SemanticCache via get_embedder().
     """
+
+    def __init__(self) -> None:
+        # Ring buffer of recent Tier 3 timing samples — each entry is a dict
+        # of stage names → milliseconds. Most-recent N runs only.
+        self._tier3_timings: deque[dict[str, float]] = deque(maxlen=_TIER3_RING_SIZE)
+
+    def get_tier3_overhead_stats(self) -> dict[str, Optional[float] | dict[str, Optional[float]] | int]:
+        """
+        Return p50/p95/p99 of Tier 3 total latency, plus per-stage p50s,
+        across the last _TIER3_RING_SIZE runs. Returns null values when no
+        runs have been recorded yet.
+        """
+        samples = list(self._tier3_timings)
+        totals = [s["total_ms"] for s in samples]
+        gens = [s["paraphrase_gen_ms"] for s in samples if "paraphrase_gen_ms" in s]
+        resps = [s["paraphrase_responses_ms"] for s in samples if "paraphrase_responses_ms" in s]
+        embeds = [s["embed_compute_ms"] for s in samples if "embed_compute_ms" in s]
+
+        def r(v: Optional[float]) -> Optional[float]:
+            return round(v, 1) if v is not None else None
+
+        return {
+            "count": len(samples),
+            "p50_ms": r(_percentile(totals, 0.50)),
+            "p95_ms": r(_percentile(totals, 0.95)),
+            "p99_ms": r(_percentile(totals, 0.99)),
+            "per_stage": {
+                "paraphrase_gen_p50_ms": r(_percentile(gens, 0.50)),
+                "paraphrase_responses_p50_ms": r(_percentile(resps, 0.50)),
+                "embed_compute_p50_ms": r(_percentile(embeds, 0.50)),
+            },
+        }
 
     def tier1_hedging_scan(self, response: str) -> DetectionResult:
         """
@@ -185,18 +236,21 @@ class HallucinationDetector:
         Any failure degrades gracefully — returns a low-confidence SAFE result.
         """
         # ── Step 1: Generate paraphrases via gpt-4o-mini ─────────────────────────
+        t_start = time.perf_counter()
         paraphrase_prompt = (
             "Rewrite the following question in 2 different ways, keeping the exact same meaning. "
             "Output only the 2 rewritten questions, one per line, with no numbering or labels:\n\n"
             f"{original_prompt}"
         )
         try:
+            t_gen_start = time.perf_counter()
             para_result = await llm_client.call_openai(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": paraphrase_prompt}],
                 temperature=0.7,
                 max_tokens=200,
             )
+            t_gen_ms = (time.perf_counter() - t_gen_start) * 1000.0
             paraphrases = [
                 line.strip()
                 for line in para_result.content.strip().splitlines()
@@ -233,7 +287,9 @@ class HallucinationDetector:
                 logger.warning("Tier 3: paraphrase LLM call failed (%s)", exc)
                 return None
 
+        t_resp_start = time.perf_counter()
         para_responses = await asyncio.gather(_call(paraphrases[0]), _call(paraphrases[1]))
+        t_resp_ms = (time.perf_counter() - t_resp_start) * 1000.0
         valid_responses = [r for r in para_responses if r is not None]
 
         if not valid_responses:
@@ -248,6 +304,7 @@ class HallucinationDetector:
         # Excluding the original avoids mixing it with stochastic paraphrase outputs
         # and keeps the signal clean: we measure how much the model's answer shifts
         # when the question is rephrased, not whether it matches its original output.
+        t_embed_start = time.perf_counter()
         embedder = get_embedder()
         embeddings = embedder.encode(valid_responses, normalize_embeddings=True)
 
@@ -260,10 +317,21 @@ class HallucinationDetector:
         ]
         avg_similarity = sum(sims) / len(sims)
         variance = 1.0 - avg_similarity
+        t_embed_ms = (time.perf_counter() - t_embed_start) * 1000.0
+
+        # Record per-stage timing for /api/tier3-overhead
+        self._tier3_timings.append({
+            "total_ms": (time.perf_counter() - t_start) * 1000.0,
+            "paraphrase_gen_ms": t_gen_ms,
+            "paraphrase_responses_ms": t_resp_ms,
+            "embed_compute_ms": t_embed_ms,
+        })
 
         logger.info(
-            "Tier 3: variance=%.3f (threshold=%.2f, avg_sim=%.3f, n_paraphrases=%d)",
+            "Tier 3: variance=%.3f (threshold=%.2f, avg_sim=%.3f, n_paraphrases=%d, "
+            "gen=%.0fms responses=%.0fms embed=%.0fms)",
             variance, THETA, avg_similarity, len(valid_responses),
+            t_gen_ms, t_resp_ms, t_embed_ms,
         )
 
         if variance > THETA:
