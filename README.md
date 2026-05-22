@@ -4,8 +4,10 @@
 
 Aegis is a production LLM gateway that routes every prompt to the cheapest capable model, detects hallucinations without requiring ground truth, and surfaces every architectural decision in a live dashboard.
 
-**Live demo:** https://aegis-llm-gateway.vercel.app
-**Backend API:** https://aegis-llm-gateway.onrender.com/docs
+
+**Live demo:** https://aegis-llm-gateway.vercel.app  
+**Backend API:** https://aegis-llm-gateway.onrender.com/docs      
+**Youtube Link** https://youtu.be/nbfz1spSwVc
 
 ---
 
