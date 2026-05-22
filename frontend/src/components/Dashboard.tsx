@@ -5,7 +5,6 @@ import {
 } from 'recharts'
 import { DashboardStats, HistoryItem, ProviderHealth, ProviderTestResult, SecurityEvent, CausalAnalysisResult, MODEL_COLORS } from '../types'
 import { useCountUp } from '../hooks/useCountUp'
-import { RiskPill } from './RiskPill'
 
 interface Props {
   stats: DashboardStats | null
@@ -433,14 +432,14 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
         )}
       </div>
 
-      {/* ── DoWhy Causal Analysis ────────────────────────────────────────── */}
+      {/* ── Domain Cost Breakdown ─────────────────────────────────────────── */}
       <div className="bg-white border border-[#E5E2DC] shadow-sm rounded-xl p-4">
         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5 flex items-center gap-2">
           <GitBranch className="w-3.5 h-3.5 text-violet-600" />
-          DoWhy Causal Analysis
+          Domain Cost Breakdown
         </h3>
         <p className="text-[10px] text-slate-400 mb-3">
-          Backdoor adjustment estimating causal effect of domain classification on routing cost (controlling for complexity score).
+          Subgroup cost breakdown by domain class — sensitive (legal/medical/financial) vs general — controlling for complexity tier.
         </p>
         {!causalAnalysis ? (
           <p className="text-xs text-slate-400 text-center py-4">Loading…</p>
@@ -448,17 +447,11 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
           <p className="text-xs text-slate-500 text-center py-4">{causalAnalysis.error}</p>
         ) : (
           <div className="space-y-2 text-xs">
-            <div className="flex gap-2">
-              <div className="flex-1 bg-[#F1EFE9] rounded-lg p-2.5">
-                <p className="text-slate-500 mb-1 text-[10px]">Causal Effect</p>
-                <p className="text-slate-900 font-mono font-semibold">
-                  +${((causalAnalysis.causal_effect_usd ?? 0)).toFixed(5)}/req
-                </p>
-              </div>
-              <div className="flex-1 bg-[#F1EFE9] rounded-lg p-2.5">
-                <p className="text-slate-500 mb-1 text-[10px]">Refutation</p>
-                <RiskPill risk={causalAnalysis.refutation_passed ? 'SAFE' : 'HIGH'} />
-              </div>
+            <div className="bg-[#F1EFE9] rounded-lg p-2.5">
+              <p className="text-slate-500 mb-1 text-[10px]">Domain Cost Delta</p>
+              <p className="text-slate-900 font-mono font-semibold">
+                +${((causalAnalysis.causal_effect_usd ?? 0)).toFixed(5)}/req
+              </p>
             </div>
             <div className="flex gap-2">
               <div className="flex-1 bg-[#F1EFE9] rounded-lg p-2.5">
@@ -472,7 +465,7 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
             </div>
             <div className="bg-[#F1EFE9] rounded-lg p-2.5">
               <p className="text-slate-500 mb-1 text-[10px]">Method</p>
-              <p className="text-slate-600 font-mono text-[10px]">backdoor.linear_regression + placebo_treatment_refuter</p>
+              <p className="text-slate-600 font-mono text-[10px]">subgroup_mean_comparison</p>
             </div>
           </div>
         )}

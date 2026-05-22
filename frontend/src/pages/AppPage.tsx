@@ -235,7 +235,7 @@ export function AppPage() {
               <AegisLogo size={28} />
               <div className="text-left">
                 <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none font-heading">Aegis</h1>
-                <p className="text-xs text-slate-400 leading-none">Agentic LLM Gateway</p>
+                <p className="text-xs text-slate-400 leading-none">Multi-Provider LLM Gateway</p>
               </div>
             </button>
           </div>
