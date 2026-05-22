@@ -1,8 +1,9 @@
-# Aegis — Agentic LLM Gateway & Causal Hallucination Firewall
+# Aegis — Multi-Provider LLM Gateway with Consistency-Based Hallucination Detection
 
-> Cost-aware multi-model routing with causal intervention-based hallucination detection
+> Cost-aware multi-model routing with response-consistency hallucination detection
 
 Aegis is a production LLM gateway that routes every prompt to the cheapest capable model, detects hallucinations without requiring ground truth, and surfaces every architectural decision in a live dashboard.
+
 
 **Live demo:** https://aegis-llm-gateway.vercel.app  
 **Backend API:** https://aegis-llm-gateway.onrender.com/docs      
@@ -17,25 +18,31 @@ Organizations using LLMs in production face two compounding problems:
 1. **Cost waste** — Simple queries hit GPT-4o at $2.50/1M tokens when Llama 3.1 (free) or Gemini Flash ($0.075/1M) would answer just as well.
 2. **Silent hallucinations** — LLMs produce confident, fluent, incorrect answers. In medical, legal, or financial contexts, this causes real harm. The core difficulty: in production, there is no ground truth to check against.
 
-Aegis addresses both problems. The hallucination problem is solved causally, not through fact-checking.
+Aegis addresses both: hallucination detection without ground truth, via response consistency under prompt paraphrasing.
 
 ---
 
 ## Differentiation
 
-OpenRouter, LiteLLM, and AWS Bedrock Converse solve the routing problem. By 2026 that is commoditized.
+OpenRouter and LiteLLM solve cost-aware routing well. Aegis adds two things they do not:
 
-What Aegis adds that no commercial router does:
+| Feature                          | OpenRouter | LiteLLM | Aegis |
+|----------------------------------|:----------:|:-------:|:-----:|
+| Multi-provider routing           |     ✓      |    ✓    |   ✓   |
+| Semantic cache                   |            |         |   ✓   |
+| Domain-gated security (hard rule)|            |         |   ✓   |
+| Paraphrase-variance hallucination|            |         |   ✓   |
+| Open source dashboard            |            |    ✓    |   ✓   |
 
-**Causal hallucination detection without ground truth.**
+**Paraphrase-variance hallucination detection without ground truth.**
 
 Instead of asking "is this response correct?" — which requires ground truth — Aegis asks:
 
 > *Does the factual claim change when only the phrasing changes?*
 
-If a model's claim shifts when the question is paraphrased, that is a causal signal: the claim was not anchored to knowledge, only to surface prompt features. This is a `do(X)` intervention in causal language. It requires no labels, no ground truth, and no external knowledge base.
+If a model's claim shifts when the question is paraphrased, the claim was not anchored to underlying knowledge, only to surface prompt features. This can be framed as a perturbation test on prompt surface form, analogous to a do-intervention in Pearl's framework — though we make no formal SCM identification claim. The technique belongs to the consistency-based hallucination detection family alongside SelfCheckGPT (Manakul et al. 2023) and semantic entropy (Kuhn et al. 2024); the contribution of Aegis is deploying this class of check as a *runtime gateway signal* rather than a research artifact.
 
-The variance threshold (θ = 0.35) is empirically determined: factual queries consistently produce paraphrase variance below 0.20; hallucination-prone queries produce variance above 0.40. θ = 0.35 sits in the upper half of this gap, biased toward precision. A post-hoc DoWhy causal analysis at `/api/causal-analysis` confirms domain classification operates as a genuine causal intervention on routing cost.
+The variance threshold (θ = 0.35) is calibrated on a 30-sample pilot set (15 factual, 15 hallucination-prone) for operational threshold tuning. This is not a published evaluation; validation on public hallucination benchmarks (HaluEval, TruthfulQA) is in progress.
 
 ---
 
@@ -59,7 +66,7 @@ Incoming Prompt
 [4] LLM Call (unified async client, 3-retry with exponential backoff)
       |  fallback to gpt-4o-mini if primary provider unavailable
       |
-[3.5] Causal Risk Check
+[3.5] Consistency Risk Check
       |  — Tier 1: Hedging phrase scan [FREE, all providers, all requests]
       |  — Tier 3: Paraphrase variance vs θ=0.35
       |             [gated: legal/medical/financial OR complexity > 0.6]
@@ -81,13 +88,53 @@ flowchart TD
     F -->|Other| G2[Route by tier\nLlama → Gemini → Haiku → GPT-4o-mini → GPT-4o]
     G1 --> H[5 LLM Call]
     G2 --> H
-    H --> I[6 Causal Risk Check\nTier 1 · Tier 3 paraphrase variance]
+    H --> I[6 Consistency Risk Check\nTier 1 · Tier 3 paraphrase variance]
     I -->|variance > θ=0.35| J1([HIGH flag])
     I -->|variance ≤ θ=0.35| J2([SAFE])
     J1 --> K[7 SQLite Log]
     J2 --> K
     K --> L([Response + Risk Level])
 ```
+
+---
+
+## Scope Boundaries
+
+- This is not a fact-checking or retrieval system — no external knowledge base is queried.
+- The variance threshold (θ = 0.35) is an operationally motivated heuristic, calibrated on a 30-sample pilot labeled set (15 factual, 15 hallucination-prone): combined detector precision 0.82, recall 0.60, F1 0.69; Tier 3 alone achieves precision 0.67 at θ = 0.35. This is a pilot for operational calibration, not a published evaluation — validation on public hallucination benchmarks (HaluEval, TruthfulQA) is in progress.
+- Paraphrase variance detects response *instability*, not factual incorrectness. A confidently wrong but internally consistent answer will not be flagged.
+- The cost-savings figure (40–60%) is computed against a worst-case GPT-4o-only baseline on a 50-record synthetic workload. Comparison against more realistic baselines (GPT-4o-mini-only, OpenRouter auto-routing) is future work.
+- The `/api/causal-analysis` endpoint reports a subgroup cost breakdown by domain class — it is descriptive telemetry, not a causal inference result.
+- This system is not a replacement for human review in regulated domains.
+
+---
+
+## Decisions held outside the automated pipeline
+
+The following are hard-coded policy decisions, not learned or inferred at runtime:
+
+- **Hard-gate categories** — legal/medical/financial domains always route to gpt-4o, regardless of complexity score
+- **Routing band boundaries** — 0.20 / 0.45 / 0.65 / 0.80 — empirically tuned, not optimized
+- **Hallucination threshold** — θ = 0.35 — calibrated on a 30-sample pilot, not on a published benchmark
+- **Cache similarity threshold** — 0.85 cosine — chosen because 0.95 yields <1% hit rate in practice
+- **Security keyword/regex lists** — see [security.py](backend/app/services/security.py) — manually curated
+- **Model pool composition** — which provider serves which routing band — a policy choice, not optimized
+
+These are policy. The automated pipeline operates *within* them; it does not modify them at runtime.
+
+---
+
+## Architecture Decisions
+
+| Pipeline Stage | Business Need | Design Rationale |
+|---|---|---|
+| [1] Security Gate | Prevent harm before any model call | Deterministic rules — PII and injection must be caught 100%, not probabilistically |
+| [2] Semantic Cache | Eliminate duplicate API costs | Cosine similarity ≥ 0.85 catches paraphrases that keyword caches miss |
+| [3] Complexity Classifier | Route simple queries to cheap models | 4-factor weighted score; question type weighted 0.35 (dominant signal for model tier) |
+| [4] Domain Hard Gate | Sensitive domains (legal, medical, financial) require the highest-safety model unconditionally — misrouting a legal or medical query to a cheaper model creates liability risk and potential patient/user harm that cost savings cannot justify | Runs before complexity classifier; cannot be overridden by any other factor |
+| [5] LLM Call | Get a response from the routed model | Async with 3-retry + exponential backoff; provider rotation distributes load |
+| [6] Consistency Risk Check | Flag responses that may be hallucinations, without ground truth | Paraphrase variance: perturb prompt surface form, measure response divergence |
+| [7] SQLite Log | Observable, auditable, cost-trackable system | Every request logged with cost, model, latency, domain, risk level |
 
 ---
 
@@ -199,9 +246,11 @@ Question type tiers are mutually exclusive — the highest matching tier wins (c
 
 ### Semantic Cache
 
-In-memory cache using `sentence-transformers/all-MiniLM-L6-v2` (via fastembed ONNX). Threshold 0.85 (not 0.95 — that gives <1% hit rate in practice). Cache hit returns in ~5ms at $0.00. Resets on server restart (intentional for demo).
+In-memory cache using `sentence-transformers/all-MiniLM-L6-v2` (via fastembed ONNX). Threshold 0.85 (not 0.95 — that gives <1% hit rate in practice). Cache hit returns in ~5ms at $0.00.
 
 The same embedder instance is shared between the cache and hallucination detector to avoid loading the model twice (~90MB).
+
+**Cache invalidation:** the cache is in-memory only and resets on Render restart. There is no TTL. This is intentional for the demo deployment; a production deployment would use Redis with a sliding-window TTL of N minutes per query and is a known limitation.
 
 ### Security Layer
 
@@ -224,12 +273,12 @@ Only runs if `domain in (legal, medical, financial)` OR `complexity_score > 0.6`
 paraphrases = generate(prompt, via="gpt-4o-mini", n=2, temperature=0.7)  # ~$0.00002
 r1, r2 = await asyncio.gather(query(p1, model, temp=0), query(p2, model, temp=0))
 
-# Only paraphrase responses compared — both at temperature=0 for a clean causal signal.
+# Compare paraphrase responses only — both at temperature=0 for a clean perturbation signal.
 # The original response (generated at temp=0.7) is excluded to avoid mixing
 # stochastic and deterministic outputs.
 variance = 1 - cosine_similarity(embed(r1), embed(r2))
 
-if variance > 0.35:   # θ heuristic midpoint; post-hoc consistent via /api/causal-analysis
+if variance > 0.35:   # θ heuristic midpoint; calibrated on a 30-sample pilot
     return HIGH_RISK  # pathway="paraphrase_variance"
 ```
 
@@ -237,13 +286,23 @@ Both `pathway` (`"paraphrase_variance"` | `"linguistic_uncertainty"` | `"epistem
 
 Tier 3 failures (API errors, insufficient paraphrases) degrade gracefully to Tier 1 result.
 
+**Latency overhead:** Tier 3 adds ~2-3× latency vs base routing — one paraphrase-generation call + two paraphrase-response calls + embedding computation. P50/p99 measurements per stage are exposed by `/api/tier3-overhead`.
+
 **Risk level merging:**
 - Domain risk: legal/medical → HIGH, financial → MEDIUM, else SAFE
 - Detection risk: paraphrase_variance → HIGH, hedging → MEDIUM
 - Final risk = max(domain_risk, detection_risk)
 
 **What's intentionally not included:**
-Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and is not demonstrable in real time. Paraphrase variance alone is sufficient for a runtime causal signal.
+Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and is not demonstrable in real time. Paraphrase variance alone is sufficient as a runtime consistency signal.
+
+### Cost calculation methodology
+
+Per-request cost is computed from provider-reported `input_tokens + output_tokens × tier rates` in [llm_client.py:54-70](backend/app/services/llm_client.py#L54-L70). Cached responses report $0.00. Gemini does not return token counts via its SDK; tokens are estimated as `len(text) / 4` for cost accounting (a known approximation). Aggregate savings are computed against a hypothetical "route everything to gpt-4o" baseline on the same workload — i.e., a worst-case baseline, not a realistic one.
+
+### Throughput
+
+Load characteristics are not currently measured. A load test (`tests/load/locustfile.py`) is planned to report p50/p99 latency under 50 concurrent requests and steady-state RPS.
 
 ---
 
@@ -251,12 +310,12 @@ Cross-model consensus (Tier 2) was dropped — it doubles latency and cost, and 
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/chat` | POST | Full pipeline: security → cache → route → hallucination check → log → respond |
+| `/api/chat` | POST | Full pipeline: security → cache → route → consistency check → log → respond |
 | `/api/chat/stream` | POST | SSE streaming: emits pipeline stage events (`status`) then final response (`done`) |
 | `/api/stats` | GET | Aggregated dashboard stats (total requests, cache hit rate, cost savings, model distribution) |
 | `/api/provider-health` | GET | Per-provider status: active/unconfigured, avg latency, query count, last seen |
 | `/api/history` | GET | Last N request records from SQLite |
-| `/api/causal-analysis` | GET | DoWhy backdoor adjustment: causal effect of domain classification on routing cost |
+| `/api/causal-analysis` | GET | Subgroup cost breakdown by domain class (sensitive vs general) controlling for complexity tier — descriptive telemetry, not a causal estimate |
 | `/health` | GET | Backend health check |
 
 ---
@@ -270,7 +329,7 @@ aegis-project/
 │   │   ├── api/
 │   │   │   └── routes.py                   # /api/chat, /api/stats, /api/provider-health
 │   │   ├── agents/
-│   │   │   └── router.py                   # LangGraph 4-node routing agent
+│   │   │   └── router.py                   # LangGraph 4-node routing workflow
 │   │   ├── models/
 │   │   │   └── schemas.py                  # Pydantic request/response models
 │   │   ├── services/
@@ -300,13 +359,13 @@ aegis-project/
 │       ├── types.ts                        # Shared TypeScript interfaces + MODEL_COLORS
 │       └── components/
 │           ├── PromptInput.tsx             # Compact textarea bar, Enter-to-submit, demo chips
-│           ├── ResponseCard.tsx            # Response text + routing/causal analysis cards
+│           ├── ResponseCard.tsx            # Response text + routing/consistency cards
 │           ├── RoutingFlow.tsx             # Decision Pipeline visual (4-step trace)
 │           ├── HistoryPanel.tsx            # Collapsible sidebar, scrollable, with model/domain badges
 │           └── Dashboard.tsx              # Live Routing Trace, Provider Health Board,
 │                                          # Savings Accumulator, 4 Recharts visualizations
 ├── notebooks/
-│   └── causal_benchmark.ipynb             # Pearl Ladder benchmark (exploratory, not in request path)
+│   └── consistency_benchmark.ipynb        # Paraphrase-variance threshold calibration (exploratory)
 └── README.md
 ```
 
@@ -322,41 +381,6 @@ aegis-project/
 Required environment variables on Render: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `ALLOWED_ORIGINS`.
 
 SQLite database is ephemeral on Render — reseeded with 50 demo records on each deploy. fastembed model cache is written to `/tmp/fastembed_cache/` on first request (~15s cold start).
-
----
-
-## Scope Boundaries
-
-- This is not a fact-checking or retrieval system — no external knowledge base is queried.
-- The variance threshold (θ = 0.35) is an operationally motivated heuristic evaluated on a 30-sample labeled set (15 factual, 15 hallucination-prone): combined detector precision 0.82, recall 0.60, F1 0.69; Tier 3 alone achieves precision 0.67 at θ = 0.35. The F1-optimal threshold on this set is θ = 0.40 (precision 1.00, F1 0.62); θ = 0.35 is deployed to bias toward higher recall.
-- A post-hoc DoWhy causal analysis (`/api/causal-analysis`) estimates that domain classification is associated with higher routing cost independently of complexity score — this is a telemetry analytics feature invoked on-demand, not a per-request inference step, and it validates the routing layer rather than the hallucination detector.
-- This system is not a replacement for human review in regulated domains.
-
----
-
-## Architecture Decisions
-
-| Pipeline Stage | Business Need | Design Rationale |
-|---|---|---|
-| [1] Security Gate | Prevent harm before any model call | Deterministic rules — PII and injection must be caught 100%, not probabilistically |
-| [2] Semantic Cache | Eliminate duplicate API costs | Cosine similarity ≥ 0.85 catches paraphrases that keyword caches miss |
-| [3] Complexity Classifier | Route simple queries to cheap models | 4-factor weighted score; question type weighted 0.35 (dominant signal for model tier) |
-| [4] Domain Hard Gate | Sensitive domains (legal, medical, financial) require the highest-safety model unconditionally — misrouting a legal or medical query to a cheaper model creates liability risk and potential patient/user harm that cost savings cannot justify | Runs before complexity classifier; cannot be overridden by any other factor |
-| [5] LLM Call | Get a response from the routed model | Async with 3-retry + exponential backoff; provider rotation distributes load |
-| [6] Causal Risk Check | Flag responses that may be hallucinations, without ground truth | Paraphrase variance (Pearl Rung 2 intervention): `do(rephrase(X))` |
-| [7] SQLite Log | Observable, auditable, cost-trackable system | Every request logged with cost, model, latency, domain, risk level |
-
-**Strategic Delegation — Human vs. AI decisions:**
-
-| Decision | Owner | Rationale |
-|---|---|---|
-| θ=0.35 variance threshold | Human (empirical) | Threshold requires domain judgment about precision/recall tradeoff |
-| Domain hard-gate categories | Human | Risk classification is an ethical, not statistical, decision |
-| Routing tier boundaries (0.20/0.45/0.65/0.80) | Human (designed) | Cost/quality tradeoff requires human judgment |
-| Security keyword list | Human | Injection patterns require human review to define |
-| Per-request routing decision | AI (classifier) | Automated, consistent, deterministic |
-| Hallucination flagging | AI (paraphrase variance) | Fast, no ground truth required |
-| Response generation | AI (routed LLM) | Core AI task |
 
 ---
 

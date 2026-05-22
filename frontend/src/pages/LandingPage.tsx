@@ -15,7 +15,7 @@ const PIPELINE_STEPS = [
   { num: 3, title: 'Complexity Scoring', desc: '4-factor weighted score (vocab richness, structure, question type, domain). Maps 0.00 → 1.00.' },
   { num: 4, title: 'Domain Hard Gate', desc: 'Legal, medical, or financial query? Always routed to GPT-4o — complexity score cannot override this.' },
   { num: 5, title: 'LLM Call', desc: 'Lowest-cost capable model selected: Llama 3.1 (free) → Gemini 2.5 Flash → Claude Haiku → GPT-4o-mini → GPT-4o.' },
-  { num: 6, title: 'Hallucination Check', desc: 'Pearl Rung 2 intervention — do(rephrase(X)). Two paraphrases generated at temp=0. Variance > θ=0.35 → HIGH risk flag.' },
+  { num: 6, title: 'Hallucination Check', desc: 'Perturb prompt surface form: two paraphrases at temp=0.7, two responses at temp=0. If responses diverge (variance > θ=0.35), flag as unreliable.' },
   { num: 7, title: 'Response + Audit Log', desc: 'Model response returned with cost, latency, risk level, and routing rationale. Every request logged to SQLite.' },
 ]
 
@@ -26,7 +26,7 @@ const FEATURE_CARDS = [
     bg: 'bg-emerald-50',
     border: 'border-emerald-200',
     title: 'Cost Routing',
-    desc: 'Scores complexity across 4 weighted factors. Routes simple queries to free Llama 3.1, complex ones to GPT-4o. 40–60% estimated cost reduction vs. always-GPT-4o.',
+    desc: 'Scores complexity across 4 weighted factors. Routes simple queries to free Llama 3.1, complex ones to GPT-4o. 40–60% estimated cost reduction vs. a worst-case GPT-4o-only baseline.',
   },
   {
     icon: Zap,
@@ -78,7 +78,7 @@ export function LandingPage() {
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
         <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-5">
-          Agentic LLM Gateway
+          Multi-Provider LLM Gateway
         </p>
         <h1 className="text-4xl sm:text-5xl font-bold leading-tight mb-6 tracking-tight font-heading">
           Route every prompt to the{' '}
@@ -109,7 +109,7 @@ export function LandingPage() {
 
         {/* Feature pills */}
         <div className="flex flex-wrap gap-2 justify-center">
-          {['Cost Routing', 'Semantic Cache', 'Hallucination Detection', 'Security Gate', 'DoWhy Causal Analysis'].map((pill) => (
+          {['Cost Routing', 'Semantic Cache', 'Hallucination Detection', 'Security Gate', 'Domain Cost Breakdown'].map((pill) => (
             <span
               key={pill}
               className="text-xs px-3 py-1 rounded-full bg-white border border-[#E5E2DC] text-slate-500 shadow-sm"
