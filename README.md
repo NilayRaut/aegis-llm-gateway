@@ -288,6 +288,8 @@ Tier 3 failures (API errors, insufficient paraphrases) degrade gracefully to Tie
 
 **Latency overhead:** Tier 3 adds ~2-3× latency vs base routing — one paraphrase-generation call + two paraphrase-response calls + embedding computation. P50/p99 measurements per stage are exposed by `/api/tier3-overhead`.
 
+**Escalation rate:** the same endpoint also reports the measured fraction of analyzed queries that escalate to Tier 3 (`tier3_rate_pct` = `tier3_runs / analyzed`), counted in-memory over the session. This is the actual gating rate under the current workload, not an assumed percentage.
+
 **Risk level merging:**
 - Domain risk: legal/medical → HIGH, financial → MEDIUM, else SAFE
 - Detection risk: paraphrase_variance → HIGH, hedging → MEDIUM
@@ -318,7 +320,7 @@ Load characteristics are not currently measured. A load test (`tests/load/locust
 | `/api/history` | GET | Last N request records from SQLite |
 | `/api/security/events` | GET | Recent security-blocked requests (`limit` param, capped at 50) |
 | `/api/domain-cost-breakdown` | GET | Subgroup cost breakdown by domain class (sensitive vs general) controlling for complexity tier — descriptive telemetry, not a causal estimate |
-| `/api/tier3-overhead` | GET | Tier 3 paraphrase-variance latency — p50/p95/p99 plus per-stage p50s over an in-memory ring buffer (resets on restart) |
+| `/api/tier3-overhead` | GET | Tier 3 paraphrase-variance latency (p50/p95/p99 + per-stage p50s) **and** measured Tier 3 escalation rate (`tier3_rate_pct`, `tier3_runs`/`analyzed`) over an in-memory session counter (resets on restart) |
 | `/health` | GET | Backend health check |
 
 ---

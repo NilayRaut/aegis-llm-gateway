@@ -108,6 +108,9 @@ export interface Tier3OverheadStats {
     paraphrase_responses_p50_ms: number | null
     embed_compute_p50_ms: number | null
   }
+  analyzed: number
+  tier3_runs: number
+  tier3_rate_pct: number | null
 }
 
 // Shared color map for models — used in HistoryPanel, Dashboard, RoutingFlow

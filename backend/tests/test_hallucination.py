@@ -267,3 +267,42 @@ class TestTier3OverheadStats:
             })
         # Should be capped at the configured size, oldest entries dropped
         assert len(detector._tier3_timings) == _TIER3_RING_SIZE
+
+
+# ── Tier 3 escalation rate ───────────────────────────────────────────────────
+
+class TestTier3EscalationRate:
+    def test_rate_is_null_before_any_query(self, detector):
+        stats = detector.get_tier3_overhead_stats()
+        assert stats["analyzed"] == 0
+        assert stats["tier3_runs"] == 0
+        assert stats["tier3_rate_pct"] is None
+
+    async def test_rate_reflects_escalation_decisions(self, detector):
+        """
+        analyze() increments 'analyzed' on every call and 'tier3_runs' only when
+        escalating. A general low-complexity query stays Tier 1; a legal query
+        escalates → measured rate should be 1/2 = 50%.
+        """
+        with patch.object(
+            detector,
+            "tier3_paraphrase_variance",
+            new=AsyncMock(return_value=detector.tier1_hedging_scan("Safe response.")),
+        ):
+            # Stays Tier 1 (general, low complexity, no factual pattern)
+            await detector.analyze(
+                prompt="Say hi.", response="Hi.", model="llama3.1",
+                provider="ollama", complexity_score=0.1, domain="general",
+                llm_client=MagicMock(),
+            )
+            # Escalates to Tier 3 (legal domain)
+            await detector.analyze(
+                prompt="Is this contract enforceable?", response="It depends.",
+                model="gpt-4o", provider="openai", complexity_score=0.3,
+                domain="legal", llm_client=MagicMock(),
+            )
+
+        stats = detector.get_tier3_overhead_stats()
+        assert stats["analyzed"] == 2
+        assert stats["tier3_runs"] == 1
+        assert stats["tier3_rate_pct"] == 50.0

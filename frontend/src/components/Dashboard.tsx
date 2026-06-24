@@ -470,6 +470,14 @@ export function Dashboard({ stats, history, providerHealth, providerTest, securi
               <p className="text-slate-500 mb-1 text-[10px]">Method</p>
               <p className="text-slate-600 font-mono text-[10px]">{domainCostBreakdown.method ?? 'subgroup_mean_comparison'}</p>
             </div>
+            {tier3Overhead && tier3Overhead.analyzed > 0 && (
+              <div className="bg-[#F1EFE9] rounded-lg p-2.5 mt-1 border-t border-slate-200">
+                <p className="text-slate-500 mb-1 text-[10px]">Tier 3 Escalation Rate</p>
+                <p className="text-slate-700 font-mono text-[10px]">
+                  {tier3Overhead.tier3_rate_pct ?? '–'}% · {tier3Overhead.tier3_runs}/{tier3Overhead.analyzed} queries escalated
+                </p>
+              </div>
+            )}
             {tier3Overhead && tier3Overhead.count > 0 && (
               <div className="bg-[#F1EFE9] rounded-lg p-2.5 mt-1 border-t border-slate-200">
                 <p className="text-slate-500 mb-1 text-[10px]">Tier 3 Latency Overhead (last {tier3Overhead.count})</p>
