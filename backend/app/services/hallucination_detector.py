@@ -131,6 +131,12 @@ class HallucinationDetector:
         # Ring buffer of recent Tier 3 timing samples — each entry is a dict
         # of stage names → milliseconds. Most-recent N runs only.
         self._tier3_timings: deque[dict[str, float]] = deque(maxlen=_TIER3_RING_SIZE)
+        # Escalation counters (in-memory, reset on restart like the ring buffer).
+        # _analyze_count = queries that reached hallucination detection
+        # (non-cached, non-blocked); _tier3_run_count = those escalated to Tier 3.
+        # Their ratio is the measured Tier 3 escalation rate surfaced on the dashboard.
+        self._analyze_count: int = 0
+        self._tier3_run_count: int = 0
 
     def get_tier3_overhead_stats(self) -> dict[str, Optional[float] | dict[str, Optional[float]] | int]:
         """
@@ -147,6 +153,12 @@ class HallucinationDetector:
         def r(v: Optional[float]) -> Optional[float]:
             return round(v, 1) if v is not None else None
 
+        rate = (
+            round(self._tier3_run_count / self._analyze_count * 100.0, 1)
+            if self._analyze_count > 0
+            else None
+        )
+
         return {
             "count": len(samples),
             "p50_ms": r(_percentile(totals, 0.50)),
@@ -157,6 +169,10 @@ class HallucinationDetector:
                 "paraphrase_responses_p50_ms": r(_percentile(resps, 0.50)),
                 "embed_compute_p50_ms": r(_percentile(embeds, 0.50)),
             },
+            # Measured Tier 3 escalation rate over all analyzed queries this session.
+            "analyzed": self._analyze_count,
+            "tier3_runs": self._tier3_run_count,
+            "tier3_rate_pct": rate,
         }
 
     def tier1_hedging_scan(self, response: str) -> DetectionResult:
@@ -376,6 +392,7 @@ class HallucinationDetector:
         Tier 3 overrides Tier 1 only when Tier 3 detects high variance.
         If Tier 3 is clean but Tier 1 flagged epistemic uncertainty, Tier 1 wins.
         """
+        self._analyze_count += 1
         tier1 = self.tier1_hedging_scan(response)
 
         factual_patterns = any(kw in prompt.lower() for kw in [
@@ -396,6 +413,7 @@ class HallucinationDetector:
         if not run_tier3:
             return tier1
 
+        self._tier3_run_count += 1
         logger.info(
             "Running Tier 3 paraphrase variance (domain=%s, complexity=%.2f)",
             domain, complexity_score,
