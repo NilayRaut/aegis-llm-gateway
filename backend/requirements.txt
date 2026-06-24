@@ -32,6 +32,10 @@ tenacity==8.2.3
 # Causal inference
 dowhy>=0.11.1
 
+# Eval/recalibration only — NOT imported by the running app (keeps the Render image lean).
+# Install separately to run backend/eval_recalibration.py:  pip install "datasets>=2.0.0"
+# datasets>=2.0.0
+
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
