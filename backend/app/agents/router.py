@@ -51,6 +51,7 @@ class RouterAgent:
         """Initialize the router agent"""
         self.graph = self._build_graph()
         self._ollama_reachable: Optional[bool] = None  # cached after first check
+        self._vllm_reachable: Optional[bool] = None    # cached after first check
         logger.info("Router agent initialized with compiled graph")
 
     def _ollama_available(self) -> bool:
@@ -68,6 +69,26 @@ class RouterAgent:
             self._ollama_reachable = False
         logger.info("Ollama reachable: %s", self._ollama_reachable)
         return self._ollama_reachable
+
+    def _vllm_available(self) -> bool:
+        """
+        Check once whether a vLLM server is reachable at VLLM_BASE_URL.
+        Result is cached for the lifetime of the process.
+        Short-circuits to False if VLLM_BASE_URL is not set.
+        """
+        if self._vllm_reachable is not None:
+            return self._vllm_reachable
+        vllm_base_url = os.getenv("VLLM_BASE_URL")
+        if not vllm_base_url:
+            self._vllm_reachable = False
+            return False
+        try:
+            r = httpx.get(f"{vllm_base_url}/models", timeout=2.0)
+            self._vllm_reachable = r.status_code == 200
+        except Exception:
+            self._vllm_reachable = False
+        logger.info("vLLM reachable: %s", self._vllm_reachable)
+        return self._vllm_reachable
     
     def _build_graph(self) -> StateGraph:
         """
@@ -179,8 +200,22 @@ class RouterAgent:
         })
 
         try:
-            # For the cheap tier (groq), prefer local Ollama when available
-            if state["provider"] == "groq" and self._ollama_available():
+            # For the cheap tier (groq), prefer vLLM (GPU) > Ollama (local CPU) > Groq
+            if state["provider"] == "groq" and self._vllm_available():
+                vllm_model = "meta-llama/Llama-3.1-8B-Instruct"
+                logger.info("vLLM reachable — using %s instead of Groq", vllm_model)
+                response = await llm_client.call_vllm(
+                    model=vllm_model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2000,
+                )
+                state["model"] = vllm_model
+                state["provider"] = "vllm"
+                state["reasoning"] = state["reasoning"].replace(
+                    "llama-3.1-8b-instant", vllm_model
+                ) + " (local vLLM GPU)"
+            elif state["provider"] == "groq" and self._ollama_available():
                 logger.info("Local Ollama reachable — using llama3.1 instead of Groq")
                 response = await llm_client.call_ollama(
                     model="llama3.1",

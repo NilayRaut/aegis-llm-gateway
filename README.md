@@ -154,6 +154,8 @@ Legal, medical, and financial queries are always hard-routed to GPT-4o regardles
 
 Local Ollama (llama3.1) overrides Groq for the lowest tier if `OLLAMA_BASE_URL` is reachable — $0.00 cost, fully local.
 
+A self-hosted **vLLM GPU tier** (`VLLM_BASE_URL`) takes precedence over both Ollama and Groq for the 0.00–0.20 band when reachable. vLLM serves the same Llama 3.1 8B model via an OpenAI-compatible API with GPU-accelerated throughput. Falls back to Groq automatically when `VLLM_BASE_URL` is unset or unreachable.
+
 ---
 
 ## Dashboard
@@ -384,6 +386,8 @@ aegis-project/
 | Frontend (React + Vite) | Vercel | Auto-deploys from main branch |
 
 Required environment variables on Render: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `ALLOWED_ORIGINS`.
+
+Optional: `VLLM_BASE_URL` — point to a self-hosted vLLM server (e.g. `http://localhost:8000/v1`) to enable the local GPU tier for the 0.00–0.20 complexity band. Falls back to Groq when unset.
 
 SQLite database is ephemeral on Render — reseeded with 50 demo records on each deploy. fastembed model cache is written to `/tmp/fastembed_cache/` on first request (~15s cold start).
 
