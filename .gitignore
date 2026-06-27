@@ -73,9 +73,11 @@ critiq.md
 gru.md
 video_script.md
 
-# Eval / study outputs (reproducible via backend/eval_recalibration.py)
+# Eval / study outputs (reproducible via eval_recalibration.py / benchmark_vllm.py)
 backend/eval_recalibration_results.json
 backend/eval_results.txt
+backend/benchmark_results.json
+backend/benchmark_results_raw.json
 
 # Claude Code instructions
 CLAUDE.md

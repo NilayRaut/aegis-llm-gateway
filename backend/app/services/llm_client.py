@@ -67,6 +67,9 @@ class LLMClient:
 
         # Groq (free tier)
         "llama-3.1-8b-instant": {"input": 0.0, "output": 0.0},
+
+        # vLLM (self-hosted GPU — free)
+        "meta-llama/Llama-3.1-8B-Instruct": {"input": 0.0, "output": 0.0},
     }
     
     def __init__(self):
@@ -118,6 +121,15 @@ class LLMClient:
             logger.info("Groq client initialized")
         else:
             logger.warning("GROQ_API_KEY not found, Groq calls will fail")
+
+        # vLLM (optional — local GPU tier, OpenAI-compatible API, no extra package needed)
+        vllm_base_url = os.getenv("VLLM_BASE_URL")
+        if vllm_base_url:
+            self.vllm_client = AsyncOpenAI(base_url=vllm_base_url, api_key="EMPTY")
+            logger.info("vLLM client initialized at %s", vllm_base_url)
+        else:
+            self.vllm_client = None
+            logger.info("VLLM_BASE_URL not set — vLLM disabled (set it to enable local GPU tier)")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -424,6 +436,53 @@ class LLMClient:
             provider="groq",
         )
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,))
+    )
+    async def call_vllm(
+        self,
+        model: str,
+        messages: list,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+    ) -> LLMResponse:
+        """
+        Call a self-hosted vLLM server (OpenAI-compatible API).
+
+        vLLM exposes /v1/chat/completions — reuses AsyncOpenAI with a custom
+        base_url. No vllm package required on the client side.
+        Set VLLM_BASE_URL to the server root, e.g. http://localhost:8000/v1
+        """
+        if not self.vllm_client:
+            raise ValueError("vLLM client not initialized. Set VLLM_BASE_URL env var.")
+
+        import time
+        start_time = time.time()
+
+        response = await self.vllm_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+
+        return LLMResponse(
+            content=response.choices[0].message.content,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=0.0,
+            latency_ms=latency_ms,
+            provider="vllm",
+        )
+
     async def call_llm(
         self,
         provider: str,
@@ -451,6 +510,7 @@ class LLMClient:
             "google": self.call_google,
             "ollama": self.call_ollama,
             "groq": self.call_groq,
+            "vllm": self.call_vllm,
         }
         
         if provider not in provider_map:
