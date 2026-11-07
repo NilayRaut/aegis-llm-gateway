@@ -27,15 +27,24 @@ distributions differ — a disclosed limitation, not per-model calibration. θ=0
 is a locked decision in CLAUDE.md: this study INFORMS a change discussion, it
 does not auto-apply.
 
-Run (spends API budget — ~4 cheap LLM calls per question):
-    conda activate neu_work
+Output
+------
+Per-item results (question, model answer, correctness label, variance score,
+tier3_ran, train/test split, routed model/provider) and the held-out AUROC are
+written to eval/results/recalibration_<UTC timestamp>.json with a provenance
+header (git commit, date, embedding model, θ sweep). The report also records
+the source dataset size and the number of items sampled / scored / in each
+split.
+
+Run (spends API budget — ~4 cheap LLM calls per question; see eval/README.md):
+    cd backend
+    pip install "datasets>=2.0.0"
     python eval_recalibration.py --smoke         # 50 questions, sanity gate
     python eval_recalibration.py --n 400         # full study
 """
 
 import argparse
 import asyncio
-import json
 import random
 import re
 import string
@@ -49,11 +58,15 @@ load_dotenv()
 
 from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_fscore_support
 
-from app.services.hallucination_detector import hallucination_detector
+from app.services.embedder import EMBEDDING_MODEL
+from app.services.hallucination_detector import PARAPHRASE_MODEL, THETA, hallucination_detector
 from app.services.llm_client import llm_client
+from eval_common import confusion_metrics, git_info, utc_now, write_results
 
 DATASET_ID = "mandarjoshi/trivia_qa"
 DATASET_CONFIG = "rc.nocontext"
+DATASET_SPLIT = "validation"
+THETA_SWEEP = [round(t, 3) for t in np.linspace(0.05, 0.70, 66)]
 
 _ARTICLES = re.compile(r"\b(a|an|the)\b")
 _PUNCT = str.maketrans("", "", string.punctuation)
@@ -73,11 +86,14 @@ def is_correct(answer_text: str, normalized_aliases: list[str]) -> bool:
     return any(alias and f" {alias} " in na for alias in normalized_aliases)
 
 
-def load_questions(n: int, seed: int) -> list[tuple[str, list[str]]]:
-    """Return n random (question, normalized_aliases) pairs from TriviaQA rc.nocontext."""
+def load_questions(n: int, seed: int) -> tuple[list[tuple[str, list[str]]], int]:
+    """
+    Return (items, dataset_size): n random (question, normalized_aliases) pairs
+    from TriviaQA rc.nocontext, plus the size of the split they were drawn from.
+    """
     from datasets import load_dataset
 
-    ds = load_dataset(DATASET_ID, DATASET_CONFIG, split="validation")
+    ds = load_dataset(DATASET_ID, DATASET_CONFIG, split=DATASET_SPLIT)
     idx = list(range(len(ds)))
     random.Random(seed).shuffle(idx)
     out = []
@@ -85,15 +101,28 @@ def load_questions(n: int, seed: int) -> list[tuple[str, list[str]]]:
         row = ds[i]
         aliases = row["answer"].get("normalized_aliases") or [row["answer"].get("normalized_value", "")]
         out.append((row["question"], [a for a in aliases if a]))
-    return out
+    return out, len(ds)
 
 
 async def score_item(question, aliases, model, provider, sem):
     """
-    Returns (label, variance_score, correct).
-      label = 1 (wrong/hallucination) | 0 (correct) | None (model abstained — undecidable)
+    Returns a per-item result dict.
+      label = 1 (wrong/hallucination) | 0 (correct) | None (answer call failed)
     Gets the model's answer to the original question, grades it, then runs Tier 3.
     """
+    item = {
+        "question": question,
+        "aliases": aliases,
+        "model": model,
+        "provider": provider,
+        "answer": None,
+        "correct": None,
+        "label": None,
+        "variance_score": None,
+        "tier3_ran": False,
+        "split": None,
+        "error": None,
+    }
     async with sem:
         try:
             ans = await llm_client.call_llm(
@@ -104,35 +133,41 @@ async def score_item(question, aliases, model, provider, sem):
             answer_text = ans.content
         except Exception as exc:
             print(f"  answer call failed: {exc}", file=sys.stderr)
-            return (None, None, None)
+            item["error"] = f"{type(exc).__name__}: {exc}"
+            return item
 
         correct = is_correct(answer_text, aliases)
         result = await hallucination_detector.tier3_paraphrase_variance(
             original_prompt=question, original_response="",
             model=model, provider=provider, llm_client=llm_client,
         )
-    label = 0 if correct else 1
-    return (label, result.variance_score, correct)
+    item.update({
+        "answer": answer_text,
+        "correct": correct,
+        "label": 0 if correct else 1,
+        "variance_score": result.variance_score,
+        "tier3_ran": result.variance_score is not None,
+    })
+    return item
 
 
 async def collect(items, model, provider, concurrency):
     sem = asyncio.Semaphore(concurrency)
     tasks = [score_item(q, aliases, model, provider, sem) for q, aliases in items]
-    raw = await asyncio.gather(*tasks)
-    scores, n_correct = [], 0
-    for done, ((q, _aliases), (label, vs, correct)) in enumerate(zip(items, raw), 1):
-        if label is None:
+    results = await asyncio.gather(*tasks)
+    answered = [r for r in results if r["label"] is not None]
+    for done, r in enumerate(results, 1):
+        if r["label"] is None:
             continue
-        if correct:
-            n_correct += 1
-        tag = "OK  " if label == 0 else "WRONG"
+        tag = "OK  " if r["label"] == 0 else "WRONG"
+        vs = r["variance_score"]
         vs_str = f"{vs:.4f}" if vs is not None else "None "
-        print(f"[{done:>3}/{len(items)}] [{tag}] var={vs_str}  {q[:60]}")
-        scores.append((label, vs))
-    acc = n_correct / len(scores) if scores else 0.0
-    print(f"\nmodel accuracy: {n_correct}/{len(scores)} = {acc*100:.0f}%  "
-          f"(wrong/hallucination class = {len(scores)-n_correct})")
-    return scores
+        print(f"[{done:>3}/{len(items)}] [{tag}] var={vs_str}  {r['question'][:60]}")
+    n_correct = sum(1 for r in answered if r["correct"])
+    acc = n_correct / len(answered) if answered else 0.0
+    print(f"\nmodel accuracy: {n_correct}/{len(answered)} = {acc*100:.0f}%  "
+          f"(wrong/hallucination class = {len(answered)-n_correct})")
+    return results
 
 
 def bootstrap_ci(labels, variances, theta, n_boot=1000, seed=42):
@@ -170,19 +205,15 @@ def _auc(rows):
 def _metrics_at(rows, t):
     labels = [l for l, _ in rows]
     preds = [1 if v > t else 0 for _, v in rows]
-    p, r, f1, _ = precision_recall_fscore_support(
-        labels, preds, average="binary", zero_division=0
-    )
-    return {"theta": round(t, 3), "precision": round(p, 3),
-            "recall": round(r, 3), "f1": round(f1, 3)}
+    return {"theta": round(t, 3), **confusion_metrics(labels, preds)}
 
 
 def stratified_split(labeled, test_size, seed):
     """Class-stratified train/test split so both classes appear in each side."""
     rng = random.Random(seed)
     by_label = {0: [], 1: []}
-    for pair in labeled:
-        by_label[pair[0]].append(pair)
+    for item in labeled:
+        by_label[item["label"]].append(item)
     train, test = [], []
     for rows in by_label.values():
         rows = rows[:]
@@ -195,28 +226,36 @@ def stratified_split(labeled, test_size, seed):
     return train, test
 
 
-def analyze(scores, n_boot, seed, test_size=0.4):
+def analyze(results, n_boot, seed, test_size=0.4):
     """
     Choose θ on the TRAIN split (max-F1 and Youden's J); report AUROC/F1 + CIs
     on the held-out TEST split. AUROC is threshold-free, so its test value is
     the headline generalization number; θ is tuned only on train to avoid the
     in-sample optimism of picking and reporting a threshold on the same data.
     """
-    labeled = [(l, v) for l, v in scores if v is not None]
-    coverage = len(labeled) / len(scores) if scores else 0.0
+    answered = [r for r in results if r["label"] is not None]
+    scored_items = [r for r in answered if r["variance_score"] is not None]
+    coverage = len(scored_items) / len(answered) if answered else 0.0
+
+    train_items, test_items = stratified_split(scored_items, test_size, seed)
+    for r in train_items:
+        r["split"] = "train"
+    for r in test_items:
+        r["split"] = "test"
+
+    labeled = [(r["label"], r["variance_score"]) for r in scored_items]
+    train = [(r["label"], r["variance_score"]) for r in train_items]
+    test = [(r["label"], r["variance_score"]) for r in test_items]
     labels = [l for l, _ in labeled]
     pos = [v for l, v in labeled if l == 1]
     neg = [v for l, v in labeled if l == 0]
 
-    train, test = stratified_split(labeled, test_size, seed)
-
     # θ candidates chosen on TRAIN only
-    sweep = [round(t, 3) for t in np.linspace(0.05, 0.70, 66)]
     rows = []
     best_f1, f1_theta = -1.0, None
-    for t in sweep:
+    for t in THETA_SWEEP:
         m = _metrics_at(train, t)
-        rows.append((t, m["precision"], m["recall"], m["f1"]))
+        rows.append(m)
         if m["f1"] > best_f1:
             best_f1, f1_theta = m["f1"], t
 
@@ -235,10 +274,19 @@ def analyze(scores, n_boot, seed, test_size=0.4):
     return {
         "dataset": f"{DATASET_ID}/{DATASET_CONFIG}",
         "label_definition": "1=model answered wrong (alias-match), 0=correct",
-        "n_total": len(scores),
+        "n_total": len(results),
+        "n_answered": len(answered),
+        "n_answer_errors": len(results) - len(answered),
         "n_scored": len(labeled),
         "tier3_coverage": round(coverage, 3),
-        "split": {"test_size": test_size, "n_train": len(train), "n_test": len(test)},
+        "split": {
+            "test_size": test_size, "seed": seed, "stratified": True,
+            "n_train": len(train), "n_test": len(test),
+            "train_class_counts": {"correct": [l for l, _ in train].count(0),
+                                   "wrong": [l for l, _ in train].count(1)},
+            "test_class_counts": {"correct": [l for l, _ in test].count(0),
+                                  "wrong": [l for l, _ in test].count(1)},
+        },
         "class_counts": {"correct": labels.count(0), "wrong": labels.count(1)},
         "variance_mean": {
             "correct": round(float(np.mean(neg)), 4) if neg else None,
@@ -252,11 +300,9 @@ def analyze(scores, n_boot, seed, test_size=0.4):
         # All operating-point metrics are evaluated on the held-out TEST split.
         "test_metrics_at_maxf1": _metrics_at(test, chosen) if chosen is not None else None,
         "test_metrics_at_youden": _metrics_at(test, youden_theta) if youden_theta is not None else None,
-        "test_metrics_at_0.35": _metrics_at(test, 0.35) if test else None,
+        f"test_metrics_at_{THETA}": _metrics_at(test, THETA) if test else None,
         "test_f1_ci95_at_maxf1": f1_ci,
-        "train_sweep": [{"theta": t, "precision": round(p, 3), "recall": round(r, 3), "f1": round(f1, 3)}
-                        for t, p, r, f1 in rows],
-        "per_example": [{"label": l, "variance": v} for l, v in labeled],
+        "train_sweep": rows,
     }
 
 
@@ -265,7 +311,7 @@ def print_report(rep):
     print("TIER 3 θ RECALIBRATION — TriviaQA (variance vs model correctness)")
     print("=" * 72)
     sp = rep["split"]
-    print(f"scored {rep['n_scored']}/{rep['n_total']} "
+    print(f"scored {rep['n_scored']}/{rep['n_total']} (answered {rep['n_answered']}) "
           f"(Tier 3 coverage {rep['tier3_coverage']*100:.0f}%) | "
           f"classes {rep['class_counts']} | train={sp['n_train']} test={sp['n_test']}")
     vm = rep["variance_mean"]
@@ -273,10 +319,11 @@ def print_report(rep):
     print(f"AUROC: train={rep['auc_train']}  test={rep['auc_test']}  (test 95% CI {rep['auc_test_ci95']})")
     print(f"θ tuned on train — Youden's J = {rep['theta_youden']}   max-F1 = {rep['theta_maxf1']}")
     print("operating-point metrics (evaluated on held-out TEST split):")
-    for key in ("test_metrics_at_maxf1", "test_metrics_at_youden", "test_metrics_at_0.35"):
+    for key in ("test_metrics_at_maxf1", "test_metrics_at_youden", f"test_metrics_at_{THETA}"):
         m = rep[key]
         if m:
-            print(f"  {key:>24}: θ={m['theta']}  P={m['precision']}  R={m['recall']}  F1={m['f1']}")
+            print(f"  {key:>24}: θ={m['theta']}  P={m['precision']}  R={m['recall']}  F1={m['f1']}  "
+                  f"TP={m['tp']} FP={m['fp']} FN={m['fn']} TN={m['tn']}")
     print(f"test F1 95% CI at max-F1 θ: {rep['test_f1_ci95_at_maxf1']}")
     if rep["auc_test"] is None:
         print("\n⚠ AUROC undefined — only one class present (model got all right or all wrong). "
@@ -296,22 +343,51 @@ async def main():
     ap.add_argument("--concurrency", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--n-boot", type=int, default=1000)
-    ap.add_argument("--out", default="eval_recalibration_results.json")
     args = ap.parse_args()
 
+    started_at = utc_now()
     n = 50 if args.smoke else args.n
-    items = load_questions(n, args.seed)
-    print(f"Loaded {len(items)} questions from {DATASET_ID}/{DATASET_CONFIG}")
+    items, dataset_size = load_questions(n, args.seed)
+    print(f"Loaded {len(items)} of {dataset_size} questions from "
+          f"{DATASET_ID}/{DATASET_CONFIG} ({DATASET_SPLIT} split)")
     print(f"Model={args.model} provider={args.provider} concurrency={args.concurrency}")
     print(f"Est. ~{len(items)*4} LLM calls (1 answer + paraphrase-gen + 2 responses per item)\n")
 
-    scores = await collect(items, args.model, args.provider, args.concurrency)
-    rep = analyze(scores, args.n_boot, args.seed)
+    results = await collect(items, args.model, args.provider, args.concurrency)
+    rep = analyze(results, args.n_boot, args.seed)
     print_report(rep)
 
-    with open(args.out, "w") as f:
-        json.dump(rep, f, indent=2)
-    print(f"\nWrote {args.out}")
+    header = {
+        "study": "tier3_recalibration",
+        "script": "backend/eval_recalibration.py",
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": utc_now().isoformat(),
+        "git": git_info(),
+        "args": vars(args),
+        "dataset": {
+            "id": DATASET_ID,
+            "config": DATASET_CONFIG,
+            "split": DATASET_SPLIT,
+            "split_size": dataset_size,
+            "n_sampled": len(items),
+        },
+        "embedding_model": EMBEDDING_MODEL,
+        "paraphrase_model": PARAPHRASE_MODEL,
+        "production_theta": THETA,
+        "theta_sweep": THETA_SWEEP,
+        # This study calls the model directly (no router), so every item uses
+        # the same --model/--provider; recorded per item for parity with eval_tier3.
+        "routed_model_per_item": [
+            {"question": r["question"], "model": r["model"], "provider": r["provider"]}
+            for r in results
+        ],
+    }
+    path = write_results("recalibration", started_at, {
+        "header": header,
+        "report": rep,
+        "results": results,
+    })
+    print(f"\nWrote {path}")
 
 
 if __name__ == "__main__":

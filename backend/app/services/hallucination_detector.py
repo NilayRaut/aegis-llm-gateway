@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 # Empirically determined variance threshold (factual <0.20, hallucination-prone >0.40)
 THETA: float = 0.35
 
+# Model used to generate the two Tier 3 paraphrases.
+PARAPHRASE_MODEL: str = "gpt-4o-mini"
+
 # Ring buffer for Tier 3 per-stage latency measurements (most-recent N runs).
 # Surfaced via /api/tier3-overhead so the dashboard can report p50/p95/p99
 # of the overhead Tier 3 adds on top of the base routing pipeline.
@@ -261,7 +264,7 @@ class HallucinationDetector:
         try:
             t_gen_start = time.perf_counter()
             para_result = await llm_client.call_openai(
-                model="gpt-4o-mini",
+                model=PARAPHRASE_MODEL,
                 messages=[{"role": "user", "content": paraphrase_prompt}],
                 temperature=0.7,
                 max_tokens=200,

@@ -73,9 +73,8 @@ critiq.md
 gru.md
 video_script.md
 
-# Eval / study outputs (reproducible via eval_recalibration.py / benchmark_vllm.py)
-backend/eval_recalibration_results.json
-backend/eval_results.txt
+# Benchmark outputs (reproducible via benchmark_vllm.py).
+# Eval outputs from eval_tier3.py / eval_recalibration.py are committed under eval/results/.
 backend/benchmark_results.json
 backend/benchmark_results_raw.json
 
