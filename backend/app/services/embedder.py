@@ -12,6 +12,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Embedding model used by SemanticCache and Tier 3 paraphrase variance.
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
 _embedder = None
 
 
@@ -23,7 +26,7 @@ class _EmbedderWrapper:
         # This keeps startup memory well under Render's 512MB free-tier limit.
         from fastembed import TextEmbedding
         logger.info("Embedder: loading all-MiniLM-L6-v2 via fastembed (ONNX)...")
-        self._model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
+        self._model = TextEmbedding(EMBEDDING_MODEL)
         logger.info("Embedder: ready")
 
     def encode(self, texts, normalize_embeddings: bool = True) -> np.ndarray:

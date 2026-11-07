@@ -2,7 +2,7 @@
 
 > Cost-aware multi-model routing with response-consistency hallucination detection
 
-Aegis is a production LLM gateway that routes every prompt to the cheapest capable model, detects hallucinations without requiring ground truth, and surfaces every architectural decision in a live dashboard.
+Aegis is a production LLM gateway that routes every prompt to the cheapest capable model, flags fabricated-premise / nonexistent-entity prompts with a paraphrase-variance consistency check (a narrow, high-precision confabulation safeguard — not a general-purpose hallucination detector; see [Scope Boundaries](#scope-boundaries)), and surfaces every architectural decision in a live dashboard.
 
 
 **Live demo:** https://aegis-llm-gateway.vercel.app  
@@ -140,13 +140,15 @@ These are policy. The automated pipeline operates *within* them; it does not mod
 
 ## Model Pool
 
-| Score Range | Primary Model | Alternate | Cost per 1M Tokens |
+| Score Range | Primary Model | Alternate | Primary cost per 1M tokens (input / output) |
 |-------------|---------------|-----------|-------------------|
-| 0.00–0.20 | Llama 3.1 8B (Groq) | — | $0.00 |
-| 0.20–0.45 | Gemini 2.0 Flash | Claude 3.5 Haiku | $0.075 |
-| 0.45–0.65 | Claude 3.5 Haiku | Gemini 2.0 Flash | $0.250 |
-| 0.65–0.80 | GPT-4o-mini | Claude 3.5 Haiku | $0.150 |
-| 0.80–1.00 | GPT-4o | — | $2.500 |
+| 0.00–0.20 | `llama-3.1-8b-instant` (Groq) | — | $0.00 / $0.00 |
+| 0.20–0.45 | `gemini-2.5-flash` (Google) | `claude-haiku-4-5-20251001` (Anthropic) | $0.15 / $0.60 |
+| 0.45–0.65 | `claude-haiku-4-5-20251001` (Anthropic) | `gemini-2.5-flash` (Google) | $0.80 / $4.00 |
+| 0.65–0.80 | `gpt-4o-mini` (OpenAI) | `claude-haiku-4-5-20251001` (Anthropic) | $0.15 / $0.60 |
+| 0.80–1.00 | `gpt-4o` (OpenAI) | — | $2.50 / $10.00 |
+
+Bands and pools mirror `ROUTING_TABLE` in [classifier.py](backend/app/services/classifier.py); costs are the rates in `LLMClient.COST_PER_1M` in [llm_client.py](backend/app/services/llm_client.py).
 
 Routing is automatic — the complexity classifier scores each prompt (0.0–1.0) and routes to the cheapest model capable of handling it. Within each tier, **provider rotation** (`random.choice(pool)`) distributes live traffic across the primary and alternate providers, preventing OpenAI from dominating all mid-tier traffic.
 
@@ -210,7 +212,7 @@ npm run dev
 ```bash
 cd backend
 pytest tests/ -v
-# 57 tests, ~8s, no real API calls made
+# 78 tests, ~8s, no real API calls made
 ```
 
 ---
@@ -352,10 +354,12 @@ aegis-project/
 │   ├── tests/
 │   │   ├── conftest.py                     # Isolated DB fixture, mocked seeding
 │   │   ├── test_security.py                # 11 tests
-│   │   ├── test_classifier.py              # 13 tests (includes provider rotation test)
+│   │   ├── test_classifier.py              # 16 tests (includes provider rotation test)
 │   │   ├── test_cache.py                   # 6 tests
-│   │   ├── test_hallucination.py           # 12 tests
-│   │   └── test_routes.py                  # 12 tests — 54 total, ~8s
+│   │   ├── test_causal_analysis.py         # 8 tests
+│   │   ├── test_hallucination.py           # 16 tests
+│   │   ├── test_llm_client.py              # 4 tests
+│   │   └── test_routes.py                  # 17 tests — 78 total, ~8s
 │   ├── main.py
 │   ├── render.yaml                         # Render deployment config (all 5 provider API keys)
 │   ├── pytest.ini
